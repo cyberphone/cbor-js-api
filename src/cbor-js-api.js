@@ -62,16 +62,20 @@ class CBOR {
       this.number = number;
       this.#tag = CBOR.#MT_FLOAT16;
       if (Number.isNaN(number)) {
-        this.#encoded = CBOR.FloatingPoint.#f16(0x7e00);
+        this.#encoded = this.#f16(0x7e00);
       } else if (!Number.isFinite(number)) {
-        this.#encoded = CBOR.FloatingPoint.#f16(number < 0 ? 0xfc00 : 0x7c00);
+        this.#encoded = this.#f16(number < 0 ? 0xfc00 : 0x7c00);
       } else if (Math.abs(number) == 0) {
-        this.#encoded = CBOR.FloatingPoint.#f16(number < 0 ? 0x8000 : 0x0000);
+        this.#encoded = this.#f16(number < 0 ? 0x8000 : 0x0000);
       }
       if (this.#encoded == null) {
-        if (Math.fround(number) == number) {
-          this.#encoded = CBOR.FloatingPoint.#f16(0x5678);
+        let f32 = Math.fround(number);
+        if (f32 == number) {
+          let f64reduced = this.#d2b(f32);
+          this.#encoded = this.#f16(0x5678);
         } else {
+          this.#tag = CBOR.#MT_FLOAT64;
+          this.#encoded = this.#d2b(number);
         }
       }
     }
@@ -84,9 +88,16 @@ class CBOR {
       return this.number;
     }
 
-    static #f16 = function(int16) {
+    #f16 = function(int16) {
       return new Uint8Array([int16 / 256, int16 % 256]);
     }
+
+    #d2b = function(d) {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setFloat64(0, d, false);
+      return [].slice.call(new Uint8Array(buffer))
+    }
+
   }
 
 ///////////////////////////
