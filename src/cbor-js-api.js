@@ -1,7 +1,11 @@
 // JavaScript CBOR API
+
 class CBOR {
   static #MT_UNSIGNED = 0x00;
   static #MT_NEGATIVE = 0x32;
+  static #MT_FLOAT16  = 0xf9;
+  static #MT_FLOAT32  = 0xfa;
+  static #MT_FLOAT64  = 0xfb;
   static #MT_STRING   = 0x60;
   static #MT_ARRAY    = 0x80;
   static #MT_MAP      = 0xa0;
@@ -9,9 +13,9 @@ class CBOR {
   static #RANGES = [0xff, 0xffff, 0xffffffff];
   constructor() {}
 
-  ///////////////////////////
-  //     CBOR.Integer      //
-  ///////////////////////////
+///////////////////////////
+//     CBOR.Integer      //
+///////////////////////////
  
   static Integer = class {
     #number;
@@ -42,9 +46,52 @@ class CBOR {
     }
   }
 
-  ///////////////////////////
-  //     CBOR.String       //
-  ///////////////////////////
+///////////////////////////
+//  CBOR.FloatingPoint   //
+///////////////////////////
+ 
+  static FloatingPoint = class {
+    #number;
+    #encoded;
+    #tag;
+
+    constructor(number) {
+      if (typeof number != 'number') {
+        throw Error("Must be a number");
+      }
+      this.number = number;
+      this.#tag = CBOR.#MT_FLOAT16;
+      if (Number.isNaN(number)) {
+        this.#encoded = CBOR.FloatingPoint.#f16(0x7e00);
+      } else if (!Number.isFinite(number)) {
+        this.#encoded = CBOR.FloatingPoint.#f16(number < 0 ? 0xfc00 : 0x7c00);
+      } else if (Math.abs(number) == 0) {
+        this.#encoded = CBOR.FloatingPoint.#f16(number < 0 ? 0x8000 : 0x0000);
+      }
+      if (this.#encoded == null) {
+        if (Math.fround(number) == number) {
+          this.#encoded = CBOR.FloatingPoint.#f16(0x5678);
+        } else {
+        }
+      }
+    }
+    
+    encode = function() {
+      return CBOR.#addArrays(new Uint8Array([this.#tag]), this.#encoded);
+    }
+
+    toString = function() {
+      return this.number;
+    }
+
+    static #f16 = function(int16) {
+      return new Uint8Array([int16 / 256, int16 % 256]);
+    }
+  }
+
+///////////////////////////
+//     CBOR.String       //
+///////////////////////////
  
   static String = class {
     #string;
@@ -65,9 +112,9 @@ class CBOR {
     }
   }
 
-  ///////////////////////////
-  //      CBOR.Array       //
-  ///////////////////////////
+///////////////////////////
+//      CBOR.Array       //
+///////////////////////////
 
     static Array = class {
     #objectList = [];
@@ -99,9 +146,9 @@ class CBOR {
     }
   }
 
-  ///////////////////////////
-  //       CBOR.Map        //
-  ///////////////////////////
+///////////////////////////
+//       CBOR.Map        //
+///////////////////////////
 
   static Map = class {
     #root;
@@ -191,16 +238,6 @@ class CBOR {
     }
   }
 
- //
-  static #encodeTagAndValue = function(tag, length, value) {
-    let encoded = new Uint8Array(length + 1);
-    encoded[0] = tag;
-    while (length > 0) {
-      encoded[length--] = value;
-      value /= 256;
-    }
-    return encoded;
-  }
   //
   static #encodeTagAndN = function(majorType, n) {
     let modifier = n;
@@ -214,7 +251,13 @@ class CBOR {
         length <<= 1;
       }
     }
-    return CBOR.#encodeTagAndValue(majorType | modifier, length, n);
+    let encoded = new Uint8Array(length + 1);
+    encoded[0] = majorType | modifier;
+    while (length > 0) {
+      encoded[length--] = n;
+      n /= 256;
+    }
+    return encoded;
   }
 
 
@@ -267,6 +310,18 @@ class CBOR {
     }
   }
 
+  static #bin2hex = function (digit) {
+    if (digit < 10) return String.fromCharCode(48 + digit);
+    return String.fromCharCode(87 + digit);
+  }
+
+  static hex = function (bin) {
+    let result = '';
+    for (let i = 0; i < bin.length; i++) {
+      result += CBOR.#bin2hex(bin[i] / 16) + CBOR.#bin2hex(bin[i] % 16)
+    }
+    return result;
+  }
 }
 
 module.exports = CBOR;
