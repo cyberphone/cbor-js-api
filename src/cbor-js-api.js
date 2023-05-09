@@ -1,8 +1,9 @@
 // JavaScript CBOR API
 class CBOR {
-  static #MT_UNSIGNED = 0;
+  static #MT_UNSIGNED = 0x00;
   static #MT_NEGATIVE = 0x32;
   static #MT_STRING   = 0x60;
+  static #MT_ARRAY    = 0x80;
   static #MT_MAP      = 0xa0;
 
   static #RANGES = [0xff, 0xffff, 0xffffffff];
@@ -17,6 +18,9 @@ class CBOR {
     constructor(number) {
       if (typeof number != 'number') {
         throw Error("Must be a number");
+      }
+      if (!Number.isInteger(number)) {
+        throw Error("Not an integer");
       }
       this.number = number;
     }
@@ -62,6 +66,40 @@ class CBOR {
   }
 
   ///////////////////////////
+  //      CBOR.Array       //
+  ///////////////////////////
+
+    static Array = class {
+    #objectList = [];
+
+    add = function(value) {
+      this.#objectList.push(value);
+      return this;
+    }
+
+    toString = function(cborPrinter) {
+      let output = '[';
+      let notFirst = false;
+      this.#objectList.forEach(value => {
+        if (notFirst) {
+          output += ', ';
+        }
+        notFirst = true;
+        output += value.toString(cborPrinter);
+      });
+      return output + ']';
+    }
+
+    encode = function() {
+      let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#objectList.length);
+      this.#objectList.forEach(value => {
+        encoded = CBOR.#addArrays(encoded, value.encode());
+      });
+      return encoded;
+    }
+  }
+
+  ///////////////////////////
   //       CBOR.Map        //
   ///////////////////////////
 
@@ -69,8 +107,6 @@ class CBOR {
     #root;
     #lastEntry;
     #deterministicMode = false;
-    constructor() {
-    }
 
     set = function(key, value) {
       let newEntry = {};
