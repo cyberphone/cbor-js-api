@@ -57,7 +57,7 @@ class CBOR {
     }
 
     toString = function() {
-      return this.string;
+      return '"' + this.string + '"';
     }
   }
 
@@ -137,12 +137,21 @@ class CBOR {
       return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_MAP, q), encoded);
     }
 
-    toString = function() {
-      let output = '{';
-      for (let entry = this.#root; entry != null; entry = entry.next) {
-        output += entry.key.toString() + ':' + entry.value.toString();
+    toString = function(cborPrinter) {
+      if (cborPrinter == undefined) {
+        cborPrinter = new CBOR.#Printer();
       }
-      return output + '}';
+      let notFirst = false;
+      let output = cborPrinter.beginMap();
+      for (let entry = this.#root; entry != null; entry = entry.next) {
+        if (notFirst) {
+          output += ',';
+        }
+        notFirst = true;
+        output += cborPrinter.newlineAndIndent();
+        output += entry.key.toString(cborPrinter) + ': ' + entry.value.toString(cborPrinter);
+      }
+      return output + cborPrinter.endMap(notFirst);
     }
   }
 
@@ -196,6 +205,32 @@ class CBOR {
     }
     return encodedKey.length - testKey.length;
   }
+
+  static #Printer = class {
+    indentationLevel = 0;
+
+    beginMap = function() {
+      this.indentationLevel++;
+      return '{';
+    }
+
+    newlineAndIndent = function() {
+      let output = '\n';
+      for (let i = 0; i < this.indentationLevel; i++) {
+        output += '  ';
+      }
+      return output;
+    }
+
+    endMap = function(notEmpty) {
+      this.indentationLevel--;
+      if (notEmpty) {
+        return this.newlineAndIndent() + '}';
+      }
+      return '}';
+    }
+  }
+
 }
 
 module.exports = CBOR;
