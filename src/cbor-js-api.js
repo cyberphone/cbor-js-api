@@ -11,6 +11,16 @@ class CBOR {
   static #MT_MAP      = 0xa0;
 
   static #RANGES = [0xff, 0xffff, 0xffffffff];
+
+  static #SPECIAL_CHARACTERS = [
+ //   0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
+      1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 , 'b', 't', 'n',  1 , 'f', 'r',  1 ,  1 ,
+      1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,
+      0 ,  0 , '"',  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,
+      0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,
+      0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,
+      0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 , '\\'];
+
   constructor() {}
 
 ///////////////////////////
@@ -106,6 +116,7 @@ class CBOR {
  
   static String = class {
     #string;
+
     constructor(string) {
       if (typeof string != 'string') {
         throw Error("Must be a string");
@@ -119,7 +130,24 @@ class CBOR {
     }
 
     toString = function() {
-      return '"' + this.string + '"';
+      let output = '"';
+      for (let q = 0; q < this.string.length; q++) {
+        let c = this.string.charCodeAt(q);
+        if (c <= 0x5c) {
+          let convertedCharacter;
+          if ((convertedCharacter = CBOR.#SPECIAL_CHARACTERS[c]) != 0) {
+            output += '\\';
+            if (convertedCharacter == 1) {
+              output += 'u00' + CBOR.#bin2hex(c / 16)  + CBOR.#bin2hex(c % 16);
+            } else {
+              output += convertedCharacter;
+            }
+            continue;
+          }
+        }
+        output += String.fromCharCode(c);
+      }
+      return output + '"';
     }
   }
 
@@ -333,6 +361,7 @@ class CBOR {
     }
     return result;
   }
+
 }
 
 module.exports = CBOR;
