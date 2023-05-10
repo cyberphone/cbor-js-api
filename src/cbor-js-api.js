@@ -3,12 +3,16 @@
 class CBOR {
   static #MT_UNSIGNED = 0x00;
   static #MT_NEGATIVE = 0x32;
-  static #MT_FLOAT16  = 0xf9;
-  static #MT_FLOAT32  = 0xfa;
-  static #MT_FLOAT64  = 0xfb;
+  static #MT_BYTES    = 0x40;
   static #MT_STRING   = 0x60;
   static #MT_ARRAY    = 0x80;
   static #MT_MAP      = 0xa0;
+  static #MT_FALSE    = 0xf4;
+  static #MT_TRUE     = 0xf5;
+  static #MT_NULL     = 0xf6;
+  static #MT_FLOAT16  = 0xf9;
+  static #MT_FLOAT32  = 0xfa;
+  static #MT_FLOAT64  = 0xfb;
 
   static #RANGES = [0xff, 0xffff, 0xffffffff];
 
@@ -130,24 +134,85 @@ class CBOR {
     }
 
     toString = function() {
-      let output = '"';
+      let buffer = '"';
       for (let q = 0; q < this.string.length; q++) {
         let c = this.string.charCodeAt(q);
         if (c <= 0x5c) {
           let convertedCharacter;
           if ((convertedCharacter = CBOR.#SPECIAL_CHARACTERS[c]) != 0) {
-            output += '\\';
+            buffer += '\\';
             if (convertedCharacter == 1) {
-              output += 'u00' + CBOR.#bin2hex(c / 16)  + CBOR.#bin2hex(c % 16);
+              buffer += 'u00' + CBOR.#twoHex(c);
             } else {
-              output += convertedCharacter;
+              buffer += convertedCharacter;
             }
             continue;
           }
         }
-        output += String.fromCharCode(c);
+        buffer += String.fromCharCode(c);
       }
-      return output + '"';
+      return buffer + '"';
+    }
+  }
+
+///////////////////////////
+//      CBOR.Bytes       //
+///////////////////////////
+ 
+  static Bytes = class {
+    #bytes;
+
+    constructor(bytes) {
+      if (!(bytes instanceof Uint8Array)) {
+        throw Error("Must be an Uint8Array");
+      }
+      this.bytes = bytes;
+    }
+    
+    encode = function() {
+      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_BYTES, this.bytes.length), this.bytes);
+    }
+
+    toString = function() {
+      return "h'" + CBOR.toHex(this.bytes) + "'";
+    }
+  }
+
+///////////////////////////
+//     CBOR.Boolean      //
+///////////////////////////
+ 
+  static Boolean = class {
+    #boolean;
+
+    constructor(boolean) {
+      if (typeof boolean != 'boolean') {
+        throw Error("Must be a boolean");
+      }
+      this.boolean = boolean;
+    }
+    
+    encode = function() {
+      return new Uint8Array([this.boolean ? CBOR.#MT_TRUE : CBOR.#MT_FALSE]);
+    }
+
+    toString = function() {
+      return this.boolean;
+    }
+  }
+
+///////////////////////////
+//      CBOR.Null        //
+///////////////////////////
+ 
+  static Null = class {
+    
+    encode = function() {
+      return new Uint8Array([CBOR.#MT_NULL]);
+    }
+
+    toString = function() {
+      return 'null';
     }
   }
 
@@ -164,16 +229,16 @@ class CBOR {
     }
 
     toString = function(cborPrinter) {
-      let output = '[';
+      let buffer = '[';
       let notFirst = false;
       this.#objectList.forEach(value => {
         if (notFirst) {
-          output += ', ';
+          buffer += ', ';
         }
         notFirst = true;
-        output += value.toString(cborPrinter);
+        buffer += value.toString(cborPrinter);
       });
-      return output + ']';
+      return buffer + ']';
     }
 
     encode = function() {
@@ -264,16 +329,16 @@ class CBOR {
         cborPrinter = new CBOR.#Printer();
       }
       let notFirst = false;
-      let output = cborPrinter.beginMap();
+      let buffer = cborPrinter.beginMap();
       for (let entry = this.#root; entry != null; entry = entry.next) {
         if (notFirst) {
-          output += ',';
+          buffer += ',';
         }
         notFirst = true;
-        output += cborPrinter.newlineAndIndent();
-        output += entry.key.toString(cborPrinter) + ': ' + entry.value.toString(cborPrinter);
+        buffer += cborPrinter.newlineAndIndent();
+        buffer += entry.key.toString(cborPrinter) + ': ' + entry.value.toString(cborPrinter);
       }
-      return output + cborPrinter.endMap(notFirst);
+      return buffer + cborPrinter.endMap(notFirst);
     }
   }
 
@@ -333,11 +398,11 @@ class CBOR {
     }
 
     newlineAndIndent = function() {
-      let output = '\n';
+      let buffer = '\n';
       for (let i = 0; i < this.indentationLevel; i++) {
-        output += '  ';
+        buffer += '  ';
       }
-      return output;
+      return buffer;
     }
 
     endMap = function(notEmpty) {
@@ -349,15 +414,19 @@ class CBOR {
     }
   }
 
-  static #bin2hex = function (digit) {
+  static #oneHex = function (digit) {
     if (digit < 10) return String.fromCharCode(48 + digit);
     return String.fromCharCode(87 + digit);
   }
 
-  static hex = function (bin) {
+  static #twoHex = function(byte) {
+    return CBOR.#oneHex(byte / 16) + CBOR.#oneHex(byte % 16);
+  }
+
+  static toHex = function (bin) {
     let result = '';
     for (let i = 0; i < bin.length; i++) {
-      result += CBOR.#bin2hex(bin[i] / 16) + CBOR.#bin2hex(bin[i] % 16)
+      result += CBOR.#twoHex(bin[i]);
     }
     return result;
   }
