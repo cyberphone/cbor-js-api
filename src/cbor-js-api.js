@@ -1,18 +1,20 @@
 // JavaScript CBOR API
 
 class CBOR {
-  static #MT_UNSIGNED = 0x00;
-  static #MT_NEGATIVE = 0x32;
-  static #MT_BYTES    = 0x40;
-  static #MT_STRING   = 0x60;
-  static #MT_ARRAY    = 0x80;
-  static #MT_MAP      = 0xa0;
-  static #MT_FALSE    = 0xf4;
-  static #MT_TRUE     = 0xf5;
-  static #MT_NULL     = 0xf6;
-  static #MT_FLOAT16  = 0xf9;
-  static #MT_FLOAT32  = 0xfa;
-  static #MT_FLOAT64  = 0xfb;
+  static #MT_UNSIGNED     = 0x00;
+  static #MT_NEGATIVE     = 0x20;
+  static #MT_BYTES        = 0x40;
+  static #MT_STRING       = 0x60;
+  static #MT_ARRAY        = 0x80;
+  static #MT_MAP          = 0xa0;
+  static #MT_BIG_UNSIGNED = 0xc2;
+  static #MT_BIG_NEGATIVE = 0xc3;
+  static #MT_FALSE        = 0xf4;
+  static #MT_TRUE         = 0xf5;
+  static #MT_NULL         = 0xf6;
+  static #MT_FLOAT16      = 0xf9;
+  static #MT_FLOAT32      = 0xfa;
+  static #MT_FLOAT64      = 0xfb;
 
   static #RANGES = [0xff, 0xffff, 0xffffffff];
 
@@ -46,7 +48,7 @@ class CBOR {
     encode = function() {
       let tag;
       let n = this.number;
-      if (this.number < 0) {
+      if (n < 0) {
         tag = CBOR.#MT_NEGATIVE;
         n = -n - 1;
       } else {
@@ -59,6 +61,80 @@ class CBOR {
       return this.number;
     }
   }
+
+///////////////////////////
+//     CBOR.BigInt       //
+///////////////////////////
+ 
+  static BigInt = class {
+    #bigInt;
+    constructor(bigInt) {
+      if (typeof bigInt != 'bigint') {
+        throw Error("Must be a BigInt");
+      }
+      this.bigInt = bigInt;
+    }
+    
+    encode = function() {
+      let tag;
+      let value = this.bigInt
+      if (value < 0) {
+        tag = CBOR.#MT_NEGATIVE;
+        value = -value -1n;
+      } else {
+        tag = CBOR.#MT_UNSIGNED;
+      }
+      let hex = value.toString(16);
+      if (hex.length % 2) {
+        hex = '0' + hex;
+      }
+      let len = hex.length / 2;
+      let offset = 0;
+      if (len <= 8) {
+        if (len > 4) {
+          offset = 8 - len;
+        } else if (len ==  3) {
+          offset = 1;
+        }
+      }
+      let u8 = new Uint8Array(len + offset);
+      let i = 0;
+      let j = 0;
+      while (i < len) {
+        u8[i + offset] = parseInt(hex.slice(j, j+2), 16);
+        i += 1;
+        j += 2;
+      }
+      if (len <= 8) {
+        let modifier;
+        switch (len + offset) {
+          case 1: 
+            if (u8[0] < 24) {
+              return new Uint8Array([tag | u8[0]]);
+            }
+            modifier = 24;
+            break;
+          case 2:
+            modifier = 25;
+            break;
+          case 4:
+            modifier = 26;
+            break;
+          default:
+            modifier = 27;
+        }
+        return CBOR.#addArrays(new Uint8Array([tag | modifier]), u8);
+      }
+      return CBOR.#addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
+                                                CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
+                                            new CBOR.Bytes(u8).encode());
+    }
+
+    toString = function() {
+      return this.bigInt.toString();
+    }
+  }
+
 
 ///////////////////////////
 //  CBOR.FloatingPoint   //
@@ -99,7 +175,7 @@ class CBOR {
     }
 
     toString = function() {
-      return this.number;
+      return this.number.toString();
     }
 
     #f16 = function(int16) {
