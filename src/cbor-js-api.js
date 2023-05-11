@@ -1,5 +1,8 @@
 // JavaScript CBOR API
 
+class CBORObject {
+}
+
 class CBOR {
   static #MT_UNSIGNED     = 0x00;
   static #MT_NEGATIVE     = 0x20;
@@ -30,12 +33,13 @@ class CBOR {
   constructor() {}
 
 ///////////////////////////
-//     CBOR.Integer      //
+//       CBOR.Int        //
 ///////////////////////////
  
-  static Integer = class {
+  static Int = class extends CBORObject {
     #number;
     constructor(number) {
+      super();
       if (typeof number != 'number') {
         throw Error("Must be a number");
       }
@@ -66,9 +70,10 @@ class CBOR {
 //     CBOR.BigInt       //
 ///////////////////////////
  
-  static BigInt = class {
+  static BigInt = class extends CBORObject {
     #bigInt;
     constructor(bigInt) {
+      super();
       if (typeof bigInt != 'bigint') {
         throw Error("Must be a BigInt");
       }
@@ -137,15 +142,16 @@ class CBOR {
 
 
 ///////////////////////////
-//  CBOR.FloatingPoint   //
+//      CBOR.Float       //
 ///////////////////////////
  
-  static FloatingPoint = class {
+  static Float = class extends CBORObject {
     #number;
     #encoded;
     #tag;
 
     constructor(number) {
+      super();
       if (typeof number != 'number') {
         throw Error("Must be a number");
       }
@@ -156,17 +162,93 @@ class CBOR {
       } else if (!Number.isFinite(number)) {
         this.#encoded = this.#f16(number < 0 ? 0xfc00 : 0x7c00);
       } else if (Math.abs(number) == 0) {
-        this.#encoded = this.#f16(number < 0 ? 0x8000 : 0x0000);
-      }
-      if (this.#encoded == null) {
+        this.#encoded = this.#f16(number == -0 ? 0x8000 : 0x0000);
+      } else {
+        // The following code depends on that Math.fround works as it should
         let f32 = Math.fround(number);
-        if (f32 == number) {
-          let f64reduced = this.#d2b(f32);
-          this.#encoded = this.#f16(0x5678);
-        } else {
-          this.#tag = CBOR.#MT_FLOAT64;
-          this.#encoded = this.#d2b(number);
+        let u8;
+        let f32exp;
+        let f32signif;
+        while (true) {  // "goto" surely beats quirky loop/break/return/flag constructs
+          if (f32 == number) {
+            this.#tag = CBOR.#MT_FLOAT32;
+            u8 = this.#d2b(f32);
+            f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
+            console.log("exp=" + f32exp);
+            console.log("exp=" + (((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4)));
+            if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
+              console.log(u8.toString());
+              throw Error("unexpected fraction: " + f32);
+            }
+            f32signif = ((u8[1] & 0x0f) << 18) + (u8[2] << 10) + (u8[3] << 2) + (u8[4] >> 6)
+            // Check if we need to denormalize data.
+            console.log("norm32=" + (f32exp <= 0));
+            if (f32exp <= 0) {
+              // The implicit "1" becomes explicit using subnormal representation.
+              f32signif += 1 << 23;
+              f32exp--;
+              // Always perform at least one turn.
+              do {
+                if ((f32signif & 1) != 0) {
+          console.log(u8.toString());
+          throw Error("unexpected offscale: " + f32);
+                }
+                f32signif >>= 1;
+              } while (++f32exp < 0);
+            }
+                        console.log("F32 S=" + ((u8[0] & 0x80) << 8) + " E=" + f32exp + " F=" + f32signif);
+            // Verify if F16 can cope. Denormlized F32 and too much precision => No
+            if (f32exp == 0 || f32signif & 0xfff) {
+              break;
+            }
+            let f16exp = f32exp - 127 + 15;
+            let f16signif = f32signif >> 12;
+            console.log("F16 S=" + ((u8[0] & 0x80) << 8) + " E=" + f16exp + " F=" + f16signif);
+           // Verify if F16 can cope. Too large => No
+            if (f16exp > 0xfc) {
+              break;
+            }
+            // Finally, is this value to small for F16?
+            if (f16exp <= 0) {
+
+                // The implicit "1" becomes explicit using subnormal representation.
+              f16signif += 1 << 10;
+              f16exp--;
+              // Always perform at least one turn.
+              do {
+                if ((f16signif & 1) != 0) {
+          console.log(u8.toString());
+          console.log("offscale f16: " + f32);
+                  break;
+                }
+                f16signif >>= 1;
+              } while (++f16exp < 0);
+            }
+            // 16 bits is all you need.
+            console.log("F16 S=" + ((u8[0] & 0x80) << 8) + " E=" + f16exp + " F=" + f16signif);
+            this.#tag = CBOR.#MT_FLOAT16;
+            let f16bin = 
+                // Put sign bit in position.
+                ((u8[0] & 0x80) << 8) +
+                // Exponent.  Put it in front of significand.
+                (f16exp << 10) +
+                // Significand.
+                f16signif;
+                this.#encoded = this.#f16(f16bin);
+          } else {
+            this.#tag = CBOR.#MT_FLOAT64;
+            this.#encoded = this.#d2b(number);
+          }
+          return;
         }
+        let f32bin = 
+            // Put sign bit in position.
+            ((u8[0] & 0x80) << 24) +
+            // Exponent.  Put it in front of significand.
+            (f32exp << 23) +
+            // Significand.
+            f32signif;
+            this.#encoded = CBOR.#addArrays(this.#f16(f32bin >> 16), this.#f16(f32bin & 0xffff));
       }
     }
     
@@ -194,10 +276,11 @@ class CBOR {
 //     CBOR.String       //
 ///////////////////////////
  
-  static String = class {
+  static String = class extends CBORObject {
     #string;
 
     constructor(string) {
+      super();
       if (typeof string != 'string') {
         throw Error("Must be a string");
       }
@@ -235,10 +318,11 @@ class CBOR {
 //      CBOR.Bytes       //
 ///////////////////////////
  
-  static Bytes = class {
+  static Bytes = class extends CBORObject {
     #bytes;
 
     constructor(bytes) {
+      super();
       if (!(bytes instanceof Uint8Array)) {
         throw Error("Must be an Uint8Array");
       }
@@ -255,13 +339,14 @@ class CBOR {
   }
 
 ///////////////////////////
-//     CBOR.Boolean      //
+//       CBOR.Bool       //
 ///////////////////////////
  
-  static Boolean = class {
+  static Bool = class extends CBORObject {
     #boolean;
 
     constructor(boolean) {
+      super();
       if (typeof boolean != 'boolean') {
         throw Error("Must be a boolean");
       }
@@ -281,7 +366,7 @@ class CBOR {
 //      CBOR.Null        //
 ///////////////////////////
  
-  static Null = class {
+  static Null = class extends CBORObject {
     
     encode = function() {
       return new Uint8Array([CBOR.#MT_NULL]);
@@ -296,11 +381,11 @@ class CBOR {
 //      CBOR.Array       //
 ///////////////////////////
 
-    static Array = class {
+    static Array = class extends CBORObject {
     #objectList = [];
 
     add = function(value) {
-      this.#objectList.push(value);
+      this.#objectList.push(CBOR.#check(value));
       return this;
     }
 
@@ -330,15 +415,15 @@ class CBOR {
 //       CBOR.Map        //
 ///////////////////////////
 
-  static Map = class {
+  static Map = class extends CBORObject {
     #root;
     #lastEntry;
     #deterministicMode = false;
 
     set = function(key, value) {
       let newEntry = {};
-      newEntry.key = key;
-      newEntry.value = value;
+      newEntry.key = CBOR.#check(key);
+      newEntry.value = CBOR.#check(value);
       newEntry.encodedKey = key.encode();
       newEntry.next = null;
       if (this.#root == null) {
@@ -497,6 +582,13 @@ class CBOR {
 
   static #twoHex = function(byte) {
     return CBOR.#oneHex(byte / 16) + CBOR.#oneHex(byte % 16);
+  }
+
+  static #check = function(value) {
+    if (value instanceof CBORObject) {
+      return value;
+    }
+    throw Error(value ? "Not CBOR object: " + value.toString() : "Argument is 'null'");
   }
 
   static toHex = function (bin) {
