@@ -162,7 +162,7 @@ class CBOR {
       } else if (!Number.isFinite(number)) {
         this.#encoded = this.#f16(number < 0 ? 0xfc00 : 0x7c00);
       } else if (Math.abs(number) == 0) {
-        this.#encoded = this.#f16(number == -0 ? 0x8000 : 0x0000);
+        this.#encoded = this.#f16(Object.is(number,-0) ? 0x8000 : 0x0000);
       } else {
         // The following code depends on that Math.fround works as it should
         let f32 = Math.fround(number);
@@ -174,58 +174,51 @@ class CBOR {
             this.#tag = CBOR.#MT_FLOAT32;
             u8 = this.#d2b(f32);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
-            console.log("exp=" + f32exp);
-            console.log("exp=" + (((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4)));
             if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
               console.log(u8.toString());
               throw Error("unexpected fraction: " + f32);
             }
-            f32signif = ((u8[1] & 0x0f) << 18) + (u8[2] << 10) + (u8[3] << 2) + (u8[4] >> 6)
-            // Check if we need to denormalize data.
-            console.log("norm32=" + (f32exp <= 0));
+            f32signif = ((u8[1] & 0x0f) << 19) + (u8[2] << 11) + (u8[3] << 3) + (u8[4] >> 5)
             if (f32exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f32signif += 1 << 23;
-              f32exp--;
               // Always perform at least one turn.
+              f32exp--;
               do {
                 if ((f32signif & 1) != 0) {
-          console.log(u8.toString());
-          throw Error("unexpected offscale: " + f32);
+                  throw Error("unexpected offscale: " + f32);
                 }
                 f32signif >>= 1;
-              } while (++f32exp < 0);
+              } while (++f32exp < 0);   
             }
-                        console.log("F32 S=" + ((u8[0] & 0x80) << 8) + " E=" + f32exp + " F=" + f32signif);
             // Verify if F16 can cope. Denormlized F32 and too much precision => No
             if (f32exp == 0 || f32signif & 0xfff) {
               break;
             }
             let f16exp = f32exp - 127 + 15;
             let f16signif = f32signif >> 12;
-            console.log("F16 S=" + ((u8[0] & 0x80) << 8) + " E=" + f16exp + " F=" + f16signif);
-           // Verify if F16 can cope. Too large => No
-            if (f16exp > 0xfc) {
+            // Verify if F16 can cope. Too large => No
+            if (f16exp > 30) {
               break;
             }
             // Finally, is this value to small for F16?
             if (f16exp <= 0) {
-
-                // The implicit "1" becomes explicit using subnormal representation.
+              // The implicit "1" becomes explicit using subnormal representation.
               f16signif += 1 << 10;
-              f16exp--;
               // Always perform at least one turn.
+              f16exp--;
               do {
                 if ((f16signif & 1) != 0) {
-          console.log(u8.toString());
-          console.log("offscale f16: " + f32);
+                  f16signif = 0;
                   break;
                 }
                 f16signif >>= 1;
               } while (++f16exp < 0);
+              if (f16signif == 0) {
+                break;
+              }
             }
             // 16 bits is all you need.
-            console.log("F16 S=" + ((u8[0] & 0x80) << 8) + " E=" + f16exp + " F=" + f16signif);
             this.#tag = CBOR.#MT_FLOAT16;
             let f16bin = 
                 // Put sign bit in position.
@@ -601,4 +594,17 @@ class CBOR {
 
 }
 
+toBin = function(bin) {
+  let exppos = bin.length == 8 ? 4 : 7;
+  let res = '';
+  for (let q = 0; q < bin.length; q++) {
+    for (let s = 7; s >= 0; s--) {
+       res += String.fromCharCode(48 + ((bin[q] >> s) & 1));
+       if ((q == 0 && s == 7) || (q == 1 && s == exppos)) {
+         res += ' ';
+       }
+    }
+  }
+  return res;
+}
 module.exports = CBOR;
