@@ -179,6 +179,7 @@ class CBOR {
               throw Error("unexpected fraction: " + f32);
             }
             f32signif = ((u8[1] & 0x0f) << 19) + (u8[2] << 11) + (u8[3] << 3) + (u8[4] >> 5)
+  //          if (Math.abs(f32) == 5.960465188081798e-8) console.log("b=" + toBin(u8) + " e=" + (((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4)) + " ec=" + f32exp + " f32signif=" + f32signif + " s=" + ((u8[0] & 0x80) * 16777216));
             if (f32exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f32signif += 1 << 23;
@@ -191,17 +192,20 @@ class CBOR {
                 f32signif >>= 1;
               } while (++f32exp < 0);   
             }
-            // Verify if F16 can cope. Denormlized F32 and too much precision => No
-            if (f32exp == 0 || f32signif & 0xfff) {
+            // Verify if F16 can cope. Denormlized F32 or too much precision => No
+            if (f32exp == 0 || f32signif & 0x1fff) {
+              console.log('@@@ skip ' + (f32exp ? "f32prec" : "f32denorm"));
               break;
             }
+            // Arrange for F16
             let f16exp = f32exp - 127 + 15;
-            let f16signif = f32signif >> 12;
+            let f16signif = f32signif >> 13;
             // Verify if F16 can cope. Too large => No
             if (f16exp > 30) {
+              console.log("@@@ skip above f16exp=" + f16exp);
               break;
             }
-            // Finally, is this value to small for F16?
+            // Finally, is this value too small for F16?
             if (f16exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f16signif += 1 << 10;
@@ -210,6 +214,7 @@ class CBOR {
               do {
                 if ((f16signif & 1) != 0) {
                   f16signif = 0;
+                  console.log("@@@ skip under f16");
                   break;
                 }
                 f16signif >>= 1;
@@ -217,6 +222,7 @@ class CBOR {
               if (f16signif == 0) {
                 break;
               }
+              console.log("@@@ succeeded f16 denorm");
             }
             // 16 bits is all you need.
             this.#tag = CBOR.#MT_FLOAT16;
@@ -235,13 +241,13 @@ class CBOR {
           return;
         }
         let f32bin = 
-            // Put sign bit in position.
-            ((u8[0] & 0x80) << 24) +
+            // Put sign bit in position. Why not << 24?  Sorry, JS is brain-dead above 2^31.
+            ((u8[0] & 0x80) * 16777216) +
             // Exponent.  Put it in front of significand.
             (f32exp << 23) +
             // Significand.
             f32signif;
-            this.#encoded = CBOR.#addArrays(this.#f16(f32bin >> 16), this.#f16(f32bin & 0xffff));
+            this.#encoded = CBOR.#addArrays(this.#f16(f32bin / 0x10000), this.#f16(f32bin & 0xffff));
       }
     }
     
