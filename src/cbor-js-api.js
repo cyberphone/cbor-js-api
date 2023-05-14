@@ -1,9 +1,11 @@
 // JavaScript CBOR API
 
+// This class is only used for marking ojects as created by this API
 class CBORObject {
 }
 
 class CBOR {
+
   static #MT_UNSIGNED     = 0x00;
   static #MT_NEGATIVE     = 0x20;
   static #MT_BYTES        = 0x40;
@@ -30,7 +32,9 @@ class CBOR {
       0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,
       0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 , '\\'];
 
-  constructor() {}
+  constructor() {
+    throw Error("CBOR cannot be instantiated");
+  }
 
 ///////////////////////////
 //       CBOR.Int        //
@@ -40,18 +44,12 @@ class CBOR {
     #number;
     constructor(number) {
       super();
-      if (typeof number != 'number') {
-        throw Error("Must be a number");
-      }
-      if (!Number.isInteger(number)) {
-        throw Error("Not an integer");
-      }
-      this.number = number;
+      this.#number = CBOR.#intCheck(number);
     }
     
     encode = function() {
       let tag;
-      let n = this.number;
+      let n = this.#number;
       if (n < 0) {
         tag = CBOR.#MT_NEGATIVE;
         n = -n - 1;
@@ -62,7 +60,7 @@ class CBOR {
     }
 
     toString = function() {
-      return this.number;
+      return this.#number;
     }
   }
 
@@ -77,12 +75,12 @@ class CBOR {
       if (typeof bigInt != 'bigint') {
         throw Error("Must be a BigInt");
       }
-      this.bigInt = bigInt;
+      this.#bigInt = bigInt;
     }
     
     encode = function() {
       let tag;
-      let value = this.bigInt
+      let value = this.#bigInt
       if (value < 0) {
         tag = CBOR.#MT_NEGATIVE;
         value = -value -1n;
@@ -136,7 +134,7 @@ class CBOR {
     }
 
     toString = function() {
-      return this.bigInt.toString();
+      return this.#bigInt.toString();
     }
   }
 
@@ -155,7 +153,7 @@ class CBOR {
       if (typeof number != 'number') {
         throw Error("Must be a number");
       }
-      this.number = number;
+      this.#number = number;
       this.#tag = CBOR.#MT_FLOAT16;
       if (Number.isNaN(number)) {
         this.#encoded = this.#f16(0x7e00);
@@ -256,7 +254,7 @@ class CBOR {
     }
 
     toString = function() {
-      return this.number.toString();
+      return this.#number.toString();
     }
 
     #f16 = function(int16) {
@@ -283,18 +281,18 @@ class CBOR {
       if (typeof string != 'string') {
         throw Error("Must be a string");
       }
-      this.string = string;
+      this.#string = string;
     }
     
     encode = function() {
-      let utf8 = new TextEncoder().encode(this.string);
+      let utf8 = new TextEncoder().encode(this.#string);
       return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_STRING, utf8.length), utf8);
     }
 
     toString = function() {
       let buffer = '"';
-      for (let q = 0; q < this.string.length; q++) {
-        let c = this.string.charCodeAt(q);
+      for (let q = 0; q < this.#string.length; q++) {
+        let c = this.#string.charCodeAt(q);
         if (c <= 0x5c) {
           let convertedCharacter;
           if ((convertedCharacter = CBOR.#SPECIAL_CHARACTERS[c]) != 0) {
@@ -325,15 +323,15 @@ class CBOR {
       if (!(bytes instanceof Uint8Array)) {
         throw Error("Must be an Uint8Array");
       }
-      this.bytes = bytes;
+      this.#bytes = bytes;
     }
     
     encode = function() {
-      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_BYTES, this.bytes.length), this.bytes);
+      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_BYTES, this.#bytes.length), this.#bytes);
     }
 
     toString = function() {
-      return "h'" + CBOR.toHex(this.bytes) + "'";
+      return "h'" + CBOR.toHex(this.#bytes) + "'";
     }
   }
 
@@ -349,15 +347,15 @@ class CBOR {
       if (typeof boolean != 'boolean') {
         throw Error("Must be a boolean");
       }
-      this.boolean = boolean;
+      this.#boolean = boolean;
     }
     
     encode = function() {
-      return new Uint8Array([this.boolean ? CBOR.#MT_TRUE : CBOR.#MT_FALSE]);
+      return new Uint8Array([this.#boolean ? CBOR.#MT_TRUE : CBOR.#MT_FALSE]);
     }
 
     toString = function() {
-      return this.boolean;
+      return this.#boolean;
     }
   }
 
@@ -502,6 +500,48 @@ class CBOR {
     }
   }
 
+///////////////////////////
+//       CBOR.Tag        //
+///////////////////////////
+
+    static Tag = class extends CBORObject {
+
+      #tagNo;
+      #object;
+
+      constructor(tagNo, object) {
+        super();
+        this.#tagNo = CBOR.#intCheck(tagNo);
+        if (tagNo < 0) {
+          throw Error("Tag is negative");
+        }
+        this.#object = CBOR.#check(object);
+      }
+
+    toString = function(cborPrinter) {
+    }
+
+    encode = function() {
+    }
+  }
+
+
+  static #_decoder = class {
+
+    cbor;
+    constructor(cbor) {
+      this.cbor = cbor;
+    }
+  }
+
+///////////////////////////
+//     CBOR.decode()     //
+///////////////////////////
+
+  static decode = function(cbor) {
+    let decoder = new CBOR.#_decoder(cbor);
+  }
+
   //
   static #encodeTagAndN = function(majorType, n) {
     let modifier = n;
@@ -549,6 +589,16 @@ class CBOR {
     return encodedKey.length - testKey.length;
   }
 
+  static #intCheck = function(number) {
+    if (typeof number != 'number') {
+      throw Error("Argument is not a 'number'");
+    }
+    if (!Number.isInteger(number)) {
+      throw Error("Argument is not an integer");
+    }
+    return number;
+  }
+
   static #Printer = class {
     indentationLevel = 0;
 
@@ -575,8 +625,7 @@ class CBOR {
   }
 
   static #oneHex = function (digit) {
-    if (digit < 10) return String.fromCharCode(48 + digit);
-    return String.fromCharCode(87 + digit);
+    return String.fromCharCode(digit < 10 ? (48 + digit) : (87 + digit));
   }
 
   static #twoHex = function(byte) {
@@ -613,4 +662,5 @@ toBin = function(bin) {
   }
   return res;
 }
+
 module.exports = CBOR;
