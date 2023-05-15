@@ -1,10 +1,72 @@
-// JavaScript CBOR API
-
-// This class is only used for marking ojects as created by this API
-class CBORObject {
-}
+/////////////////////////////////////////////////////////////////////////////////
+//                                                                             //
+//                             CBOR JavaScript API                             //
+//                                                                             //
+// Defines a single global object CBOR to (in some way) mimic the JSON object. //
+// Determinisic encoding aligned with Appendix A and 4.2.2 Rule 2 of RFC 8949. //
+// Author: Anders Rundgren (https://github.com/cyberphone)                     //
+/////////////////////////////////////////////////////////////////////////////////
 
 class CBOR {
+
+  // Super class for all CBOR types.
+  static #CBORObject = class {
+
+    // Overridden getter in derived classes.
+    _get = function() {};
+
+    constructor() {}
+
+    getInt = function() {
+      return this.#methodCompatibilityCheck(CBOR.Int);
+    }
+
+    getString = function() {
+      return this.#methodCompatibilityCheck(CBOR.String);
+    }
+
+    getBytes = function() {
+      return this.#methodCompatibilityCheck(CBOR.Bytes);
+    }
+
+    getFloat = function() {
+      return this.#methodCompatibilityCheck(CBOR.Float);
+    }
+
+    getBool = function() {
+      return this.#methodCompatibilityCheck(CBOR.Bool);
+    }
+
+    getNull = function() {
+      return this instanceof CBOR.Null;
+    }
+
+    getBigInt = function() {
+      if (this instanceof CBOR.Int) {
+        return BigInt(this._get());
+      }
+      return this.#methodCompatibilityCheck(CBOR.BigInt);
+    }
+
+    getArray = function() {
+      return this.#methodCompatibilityCheck(CBOR.Array);
+    }
+ 
+    getMap = function() {
+      return this.#methodCompatibilityCheck(CBOR.Map);
+    }
+ 
+    getTag = function() {
+      return this.#methodCompatibilityCheck(CBOR.Tag);
+    }
+ 
+    #methodCompatibilityCheck = function(className) {
+      if (!(this instanceof className)) {
+        throw Error("Invalid object for this method: CBOR." + this.constructor.name);
+      }
+      return this._get();
+    }
+  }
 
   static #MT_UNSIGNED     = 0x00;
   static #MT_NEGATIVE     = 0x20;
@@ -12,6 +74,7 @@ class CBOR {
   static #MT_STRING       = 0x60;
   static #MT_ARRAY        = 0x80;
   static #MT_MAP          = 0xa0;
+  static #MT_TAG          = 0xc0;
   static #MT_BIG_UNSIGNED = 0xc2;
   static #MT_BIG_NEGATIVE = 0xc3;
   static #MT_FALSE        = 0xf4;
@@ -40,16 +103,16 @@ class CBOR {
 //       CBOR.Int        //
 ///////////////////////////
  
-  static Int = class extends CBORObject {
-    #number;
-    constructor(number) {
+  static Int = class extends CBOR.#CBORObject {
+    #int;
+    constructor(int) {
       super();
-      this.#number = CBOR.#intCheck(number);
+      this.#int = CBOR.#intCheck(int);
     }
     
     encode = function() {
       let tag;
-      let n = this.#number;
+      let n = this.#int;
       if (n < 0) {
         tag = CBOR.#MT_NEGATIVE;
         n = -n - 1;
@@ -60,7 +123,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#number;
+      return this.#int;
+    }
+
+    _get = function() {
+      return this.#int;
     }
   }
 
@@ -68,14 +135,11 @@ class CBOR {
 //     CBOR.BigInt       //
 ///////////////////////////
  
-  static BigInt = class extends CBORObject {
+  static BigInt = class extends CBOR.#CBORObject {
     #bigInt;
     constructor(bigInt) {
       super();
-      if (typeof bigInt != 'bigint') {
-        throw Error("Must be a BigInt");
-      }
-      this.#bigInt = bigInt;
+      this.#bigInt = CBOR.#typeCheck(bigInt, 'bigint');
     }
     
     encode = function() {
@@ -87,6 +151,7 @@ class CBOR {
       } else {
         tag = CBOR.#MT_UNSIGNED;
       }
+      // Extremely awkward code for convertint BigInt to Uint8Array
       let hex = value.toString(16);
       if (hex.length % 2) {
         hex = '0' + hex;
@@ -94,6 +159,7 @@ class CBOR {
       let len = hex.length / 2;
       let offset = 0;
       if (len <= 8) {
+        // Setting up for "Int" encoding
         if (len > 4) {
           offset = 8 - len;
         } else if (len ==  3) {
@@ -108,7 +174,9 @@ class CBOR {
         i += 1;
         j += 2;
       }
+      // Is this actually a "BigInt"?
       if (len <= 8) {
+        // Apparently not so we encode as "Int"
         let modifier;
         switch (len + offset) {
           case 1: 
@@ -128,6 +196,7 @@ class CBOR {
         }
         return CBOR.#addArrays(new Uint8Array([tag | modifier]), u8);
       }
+      // True "BigInt"
       return CBOR.#addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
                                                 CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
                                             new CBOR.Bytes(u8).encode());
@@ -136,6 +205,10 @@ class CBOR {
     toString = function() {
       return this.#bigInt.toString();
     }
+ 
+    _get = function() {
+      return this.#bigInt;
+    }
   }
 
 
@@ -143,32 +216,32 @@ class CBOR {
 //      CBOR.Float       //
 ///////////////////////////
  
-  static Float = class extends CBORObject {
-    #number;
+  static Float = class extends CBOR.#CBORObject {
+    #float;
     #encoded;
     #tag;
 
-    constructor(number) {
+    constructor(float) {
       super();
-      if (typeof number != 'number') {
-        throw Error("Must be a number");
-      }
-      this.#number = number;
+      this.#float = CBOR.#typeCheck(float, 'number');
+      // Begin catching the F16 edge cases.
       this.#tag = CBOR.#MT_FLOAT16;
-      if (Number.isNaN(number)) {
+      if (Number.isNaN(float)) {
         this.#encoded = this.#f16(0x7e00);
-      } else if (!Number.isFinite(number)) {
-        this.#encoded = this.#f16(number < 0 ? 0xfc00 : 0x7c00);
-      } else if (Math.abs(number) == 0) {
-        this.#encoded = this.#f16(Object.is(number,-0) ? 0x8000 : 0x0000);
+      } else if (!Number.isFinite(float)) {
+        this.#encoded = this.#f16(float < 0 ? 0xfc00 : 0x7c00);
+      } else if (Math.abs(float) == 0) {
+        this.#encoded = this.#f16(Object.is(float,-0) ? 0x8000 : 0x0000);
       } else {
-        // The following code depends on that Math.fround works as it should
-        let f32 = Math.fround(number);
+        // Nope, it is apparently a genuine number...
+        // The following code depends on that Math.fround works as it should.
+        let f32 = Math.fround(float);
         let u8;
         let f32exp;
         let f32signif;
         while (true) {  // "goto" surely beats quirky loop/break/return/flag constructs
-          if (f32 == number) {
+          if (f32 == float) {
+            // Nothing lost => F32 or F16 is on the munu.
             this.#tag = CBOR.#MT_FLOAT32;
             u8 = this.#d2b(f32);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
@@ -190,15 +263,15 @@ class CBOR {
                 f32signif >>= 1;
               } while (++f32exp < 0);   
             }
-            // Verify if F16 can cope. Denormlized F32 or too much precision => No
+            // Verify if F16 can cope. Denormlized F32 or too much precision => No.
             if (f32exp == 0 || f32signif & 0x1fff) {
               console.log('@@@ skip ' + (f32exp ? "f32prec" : "f32denorm"));
               break;
             }
-            // Arrange for F16
+            // Arrange for F16.
             let f16exp = f32exp - 127 + 15;
             let f16signif = f32signif >> 13;
-            // Verify if F16 can cope. Too large => No
+            // Verify if F16 can cope. Too large => No.
             if (f16exp > 30) {
               console.log("@@@ skip above f16exp=" + f16exp);
               break;
@@ -210,6 +283,7 @@ class CBOR {
               // Always perform at least one turn.
               f16exp--;
               do {
+                // Losing bits is not an option.
                 if ((f16signif & 1) != 0) {
                   f16signif = 0;
                   console.log("@@@ skip under f16");
@@ -217,6 +291,7 @@ class CBOR {
                 }
                 f16signif >>= 1;
               } while (++f16exp < 0);
+              // Too small, stick to F32.
               if (f16signif == 0) {
                 break;
               }
@@ -233,11 +308,13 @@ class CBOR {
                 f16signif;
                 this.#encoded = this.#f16(f16bin);
           } else {
+            // F32 returned a truncated result => Full 64-bit float is required.
             this.#tag = CBOR.#MT_FLOAT64;
-            this.#encoded = this.#d2b(number);
+            this.#encoded = this.#d2b(float);
           }
           return;
         }
+        // 32 bits are apparently sufficient for maintaining magnitude and precision.
         let f32bin = 
             // Put sign bit in position. Why not << 24?  Sorry, JS is brain-dead above 2^31.
             ((u8[0] & 0x80) * 16777216) +
@@ -254,7 +331,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#number.toString();
+      return this.#float.toString();
+    }
+
+    _get = function() {
+      return this.#float;
     }
 
     #f16 = function(int16) {
@@ -266,22 +347,18 @@ class CBOR {
       new DataView(buffer).setFloat64(0, d, false);
       return [].slice.call(new Uint8Array(buffer))
     }
-
   }
 
 ///////////////////////////
 //     CBOR.String       //
 ///////////////////////////
  
-  static String = class extends CBORObject {
+  static String = class extends CBOR.#CBORObject {
     #string;
 
     constructor(string) {
       super();
-      if (typeof string != 'string') {
-        throw Error("Must be a string");
-      }
-      this.#string = string;
+      this.#string = CBOR.#typeCheck(string, 'string');
     }
     
     encode = function() {
@@ -309,21 +386,22 @@ class CBOR {
       }
       return buffer + '"';
     }
+
+    _get = function() {
+      return this.#string;
+    }
   }
 
 ///////////////////////////
 //      CBOR.Bytes       //
 ///////////////////////////
  
-  static Bytes = class extends CBORObject {
+  static Bytes = class extends CBOR.#CBORObject {
     #bytes;
 
     constructor(bytes) {
       super();
-      if (!(bytes instanceof Uint8Array)) {
-        throw Error("Must be an Uint8Array");
-      }
-      this.#bytes = bytes;
+      this.#bytes = CBOR.#bytesCheck(bytes);
     }
     
     encode = function() {
@@ -333,29 +411,34 @@ class CBOR {
     toString = function() {
       return "h'" + CBOR.toHex(this.#bytes) + "'";
     }
+
+    _get = function() {
+      return this.#bytes;
+    }
   }
 
 ///////////////////////////
 //       CBOR.Bool       //
 ///////////////////////////
  
-  static Bool = class extends CBORObject {
-    #boolean;
+  static Bool = class extends CBOR.#CBORObject {
+    #bool;
 
-    constructor(boolean) {
+    constructor(bool) {
       super();
-      if (typeof boolean != 'boolean') {
-        throw Error("Must be a boolean");
-      }
-      this.#boolean = boolean;
+      this.#bool = CBOR.#typeCheck(bool, 'boolean');
     }
     
     encode = function() {
-      return new Uint8Array([this.#boolean ? CBOR.#MT_TRUE : CBOR.#MT_FALSE]);
+      return new Uint8Array([this.#bool ? CBOR.#MT_TRUE : CBOR.#MT_FALSE]);
     }
 
     toString = function() {
-      return this.#boolean;
+      return this.#bool.toString();
+    }
+
+    _get = function() {
+      return this.#bool;
     }
   }
 
@@ -363,7 +446,7 @@ class CBOR {
 //      CBOR.Null        //
 ///////////////////////////
  
-  static Null = class extends CBORObject {
+  static Null = class extends CBOR.#CBORObject {
     
     encode = function() {
       return new Uint8Array([CBOR.#MT_NULL]);
@@ -378,12 +461,20 @@ class CBOR {
 //      CBOR.Array       //
 ///////////////////////////
 
-    static Array = class extends CBORObject {
+    static Array = class extends CBOR.#CBORObject {
     #objectList = [];
 
     add = function(value) {
-      this.#objectList.push(CBOR.#check(value));
+      this.#objectList.push(CBOR.#cborArguentCheck(value));
       return this;
+    }
+
+    encode = function() {
+      let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#objectList.length);
+      this.#objectList.forEach(value => {
+        encoded = CBOR.#addArrays(encoded, value.encode());
+      });
+      return encoded;
     }
 
     toString = function(cborPrinter) {
@@ -399,12 +490,8 @@ class CBOR {
       return buffer + ']';
     }
 
-    encode = function() {
-      let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#objectList.length);
-      this.#objectList.forEach(value => {
-        encoded = CBOR.#addArrays(encoded, value.encode());
-      });
-      return encoded;
+    _get = function() {
+      return this;
     }
   }
 
@@ -412,15 +499,15 @@ class CBOR {
 //       CBOR.Map        //
 ///////////////////////////
 
-  static Map = class extends CBORObject {
+  static Map = class extends CBOR.#CBORObject {
     #root;
     #lastEntry;
     #deterministicMode = false;
 
     set = function(key, value) {
       let newEntry = {};
-      newEntry.key = CBOR.#check(key);
-      newEntry.value = CBOR.#check(value);
+      newEntry.key = CBOR.#cborArguentCheck(key);
+      newEntry.value = CBOR.#cborArguentCheck(value);
       newEntry.encodedKey = key.encode();
       newEntry.next = null;
       if (this.#root == null) {
@@ -498,30 +585,41 @@ class CBOR {
       }
       return buffer + cborPrinter.endMap(notFirst);
     }
+
+    _get = function() {
+      return this;
+    }
   }
 
 ///////////////////////////
 //       CBOR.Tag        //
 ///////////////////////////
 
-    static Tag = class extends CBORObject {
+  static Tag = class extends CBOR.#CBORObject {
 
-      #tagNo;
+      #tagNumber;
       #object;
 
-      constructor(tagNo, object) {
+      constructor(tagNumber, object) {
         super();
-        this.#tagNo = CBOR.#intCheck(tagNo);
-        if (tagNo < 0) {
+        this.#tagNumber = CBOR.#intCheck(tagNumber);
+        if (tagNumber < 0) {
           throw Error("Tag is negative");
         }
-        this.#object = CBOR.#check(object);
+        this.#object = CBOR.#cborArguentCheck(object);
       }
 
-    toString = function(cborPrinter) {
+    encode = function() {
+      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_TAG, this.#tagNumber),
+                             this.#object.encode());
     }
 
-    encode = function() {
+    toString = function(cborPrinter) {
+      return this.#tagNumber.toString() + '(' + this.#object.toString(cborPrinter) + ')';
+    }
+
+    _get = function() {
+      return this;
     }
   }
 
@@ -539,10 +637,13 @@ class CBOR {
 ///////////////////////////
 
   static decode = function(cbor) {
-    let decoder = new CBOR.#_decoder(cbor);
+    let decoder = new CBOR.#_decoder(CBOR.#bytesCheck(cbor));
   }
 
-  //
+///////////////////////////
+//    Support Methods    //
+///////////////////////////
+
   static #encodeTagAndN = function(majorType, n) {
     let modifier = n;
     let length = 0;
@@ -563,7 +664,6 @@ class CBOR {
     }
     return encoded;
   }
-
 
   static #addArrays = function(a1, a2) {
   let res = new Uint8Array(a1.length + a2.length);
@@ -589,14 +689,26 @@ class CBOR {
     return encodedKey.length - testKey.length;
   }
 
-  static #intCheck = function(number) {
-    if (typeof number != 'number') {
-      throw Error("Argument is not a 'number'");
+  static #bytesCheck = function(bytes) {
+    if (bytes instanceof Uint8Array) {
+      return bytes;
     }
-    if (!Number.isInteger(number)) {
+    throw Error("Argument is not an 'Uint8Array'");
+  }
+
+  static #typeCheck = function(object, type) {
+    if (typeof object != type) {
+      throw Error("Argument is not a '" + type + "'");
+    }
+    return object;
+  }
+
+  static #intCheck = function(int) {
+    CBOR.#typeCheck(int, 'number');
+    if (!Number.isInteger(int)) {
       throw Error("Argument is not an integer");
     }
-    return number;
+    return int;
   }
 
   static #Printer = class {
@@ -632,11 +744,11 @@ class CBOR {
     return CBOR.#oneHex(byte / 16) + CBOR.#oneHex(byte % 16);
   }
 
-  static #check = function(value) {
-    if (value instanceof CBORObject) {
+  static #cborArguentCheck = function(value) {
+    if (value instanceof CBOR.#CBORObject) {
       return value;
     }
-    throw Error(value ? "Not CBOR object: " + value.toString() : "Argument is 'null'");
+    throw Error(value ? "Argument is not a CBOR object: " + value.constructor.name : "'null'");
   }
 
   static toHex = function (bin) {
@@ -648,6 +760,8 @@ class CBOR {
   }
 
 }
+
+// To be DELETED
 
 toBin = function(bin) {
   let exppos = bin.length == 8 ? 4 : 7;
