@@ -18,6 +18,9 @@ class CBOR {
     constructor() {}
 
     getInt = function() {
+      if (this instanceof CBOR.BigInt) {
+        throw Error("Integer out of range for 'Number', use getBigInt()");
+      }
       return this.#methodCompatibilityCheck(CBOR.Int);
     }
 
@@ -123,7 +126,7 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#int;
+      return this.#int.toString();
     }
 
     _get = function() {
@@ -469,6 +472,20 @@ class CBOR {
       return this;
     }
 
+    get = function(index) {
+      index = CBOR.#intCheck(index);
+      if (index < 0 || index >= this.#objectList.length) {
+        throw Error("Array index out of range: " + index);
+      }
+      return this.#objectList[index];
+    }
+
+    toArray = function() {
+      let array = [];
+      this.#objectList.forEach(value => array.push(value));
+      return array;
+    }
+
     encode = function() {
       let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#objectList.length);
       this.#objectList.forEach(value => {
@@ -490,6 +507,10 @@ class CBOR {
       return buffer + ']';
     }
 
+    size = function() {
+      return this.#objectList.length;
+    }
+
     _get = function() {
       return this;
     }
@@ -506,7 +527,7 @@ class CBOR {
 
     set = function(key, value) {
       let newEntry = {};
-      newEntry.key = CBOR.#cborArguentCheck(key);
+      newEntry.key = this.#getKey(key);
       newEntry.value = CBOR.#cborArguentCheck(value);
       newEntry.encodedKey = key.encode();
       newEntry.next = null;
@@ -526,7 +547,7 @@ class CBOR {
             // Then we need to test and sort (always produce deterministic CBOR).
             let precedingEntry = null;
             let diff = 0;
-            for (let entry = this.#root; entry != null; entry = entry.next) {
+            for (let entry = this.#root; entry; entry = entry.next) {
             diff = CBOR.#compare(entry, newEntry.encodedKey);
             if (diff == 0) {
               throw Error("Duplicate: " + key);                      
@@ -558,10 +579,73 @@ class CBOR {
       return this;
     }
 
+    #getKey = function(key) {
+      return CBOR.#cborArguentCheck(key);
+    }
+
+    #missingKey = function(key) {
+      throw Error("Missing key: " + key);
+    }
+
+    #lookup(key, mustExist) {
+      let encodedKey = this.#getKey(key).encode();
+      for (let entry = this.#root; entry; entry = entry.next) {
+        if (CBOR.#compare(entry, encodedKey) == 0) {
+          return entry;
+        }
+      }
+      if (mustExist) {
+        this.#missingKey(key);
+      }
+      return null;
+    }
+
+    get = function(key) {
+      return this.#lookup(key, true).value;
+    }
+
+    getConditionally = function(key, defaultValue) {
+      let entry = this.#lookup(key, false);
+      defaultValue = CBOR.#cborArguentCheck(defaultValue);
+      return entry == null ? defaultValue : entry.value;
+    }
+
+    getKeys = function() {
+      let keys = [];
+      for (let entry = this.#root; entry; entry = entry.next) {
+        keys.push(entry.key);
+      }
+      return keys;
+    }
+
+    remove = function(key) {
+      let encodedKey = this.#getKey(key).encode();
+      let precedingEntry = null;
+      for (let entry = this.#root; entry; entry = entry.next) {
+        let diff = CBOR.#compare(entry, encodedKey);
+        if (diff == 0) {
+          if (precedingEntry == null) {
+            // Remove root key.  It may be alone.
+            this.#root = entry.next;
+          } else {
+            // Remove key somewhere above root.
+            precedingEntry.next = entry.next;
+          }
+          return entry.value;
+        }
+        precedingEntry = entry;
+      }
+      this.#missingKey(key);
+    }
+
+    containsKey = function(key) {
+      return this.#lookup(key, false) != null;
+    }
+
     encode = function() {
       let q = 0;
       let encoded = new Uint8Array();
-      for (let entry = this.#root; entry != null; entry = entry.next) {
+      for (let entry = this.#root; entry; entry = entry.next) {
         q++;
         encoded = CBOR.#addArrays(encoded, 
                       CBOR.#addArrays(entry.key.encode(), entry.value.encode()));
@@ -575,7 +659,7 @@ class CBOR {
       }
       let notFirst = false;
       let buffer = cborPrinter.beginMap();
-      for (let entry = this.#root; entry != null; entry = entry.next) {
+      for (let entry = this.#root; entry; entry = entry.next) {
         if (notFirst) {
           buffer += ',';
         }
