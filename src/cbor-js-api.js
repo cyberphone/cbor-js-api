@@ -221,11 +221,11 @@ class CBOR {
       // Begin catching the F16 edge cases.
       this.#tag = CBOR.#MT_FLOAT16;
       if (Number.isNaN(float)) {
-        this.#encoded = this.#f16Encoding(0x7e00);
+        this.#encoded = CBOR.#f16Encoding(0x7e00);
       } else if (!Number.isFinite(float)) {
-        this.#encoded = this.#f16Encoding(float < 0 ? 0xfc00 : 0x7c00);
+        this.#encoded = CBOR.#f16Encoding(float < 0 ? 0xfc00 : 0x7c00);
       } else if (Math.abs(float) == 0) {
-        this.#encoded = this.#f16Encoding(Object.is(float,-0) ? 0x8000 : 0x0000);
+        this.#encoded = CBOR.#f16Encoding(Object.is(float,-0) ? 0x8000 : 0x0000);
       } else {
         // It is apparently a genuine number.
         // The following code depends on that Math.fround works as expected.
@@ -237,7 +237,7 @@ class CBOR {
           if (f32 == float) {
             // Nothing was lost during the conversion, F32 or F16 is on the menu.
             this.#tag = CBOR.#MT_FLOAT32;
-            u8 = this.#f64Encoding(f32);
+            u8 = CBOR.#f64Encoding(f32);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
             if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
               console.log(u8.toString());
@@ -300,11 +300,11 @@ class CBOR {
                 (f16exp << 10) +
                 // Significand.
                 f16signif;
-                this.#encoded = this.#f16Encoding(f16bin);
+                this.#encoded = CBOR.#f16Encoding(f16bin);
           } else {
             // Converting to F32 returned a truncated result. Full 64-bit float is required.
             this.#tag = CBOR.#MT_FLOAT64;
-            this.#encoded = this.#f64Encoding(float);
+            this.#encoded = CBOR.#f64Encoding(float);
           }
           // Common F16 and F64 return point.
           return;
@@ -317,8 +317,8 @@ class CBOR {
             (f32exp << 23) +
             // Significand.
             f32signif;
-            this.#encoded = CBOR.#addArrays(this.#f16Encoding(f32bin / 0x10000), 
-                                            this.#f16Encoding(f32bin & 0xffff));
+            this.#encoded = CBOR.#addArrays(CBOR.#f16Encoding(f32bin / 0x10000), 
+                                            CBOR.#f16Encoding(f32bin & 0xffff));
       }
     }
     
@@ -332,16 +332,6 @@ class CBOR {
 
     _get = function() {
       return this.#float;
-    }
-
-    #f16Encoding = function(int16) {
-      return new Uint8Array([int16 / 256, int16 % 256]);
-    }
-
-    #f64Encoding = function(number) {
-      const buffer = new ArrayBuffer(8);
-      new DataView(buffer).setFloat64(0, number, false);
-      return [].slice.call(new Uint8Array(buffer))
     }
   }
 
@@ -873,7 +863,7 @@ class CBOR {
         // In addition, N must be > 23. 
         if ((bigN < 24n || (diff > 0 && !(~BigInt(CBOR.#RANGES[diff - 1]) & bigN))) && 
             this.deterministicMode) {
-          throw Error("Non-deterministic integer encoding");
+          throw Error("Non-deterministic N encoding tag: 0x" + CBOR.#twoHex(tag));
         }
       } else {
         bigN = BigInt(n);
@@ -1042,6 +1032,16 @@ class CBOR {
       }
       return '}';
     }
+  }
+  
+  static #f16Encoding = function(int16) {
+    return new Uint8Array([int16 / 256, int16 % 256]);
+  }
+
+  static #f64Encoding = function(number) {
+    const buffer = new ArrayBuffer(8);
+    new DataView(buffer).setFloat64(0, number, false);
+    return [].slice.call(new Uint8Array(buffer))
   }
 
   static #oneHex = function (digit) {
