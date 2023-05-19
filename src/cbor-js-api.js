@@ -157,7 +157,7 @@ class CBOR {
       let value = this.#bigInt
       if (value < 0) {
         tag = CBOR.#MT_NEGATIVE;
-        value = -value - 1n;
+        value = ~value;
       } else {
         tag = CBOR.#MT_UNSIGNED;
       }
@@ -166,7 +166,7 @@ class CBOR {
       let array = [];
       let temp = BigInt(value);
       do {
-        array.push(temp & 255n);
+        array.push(Number(temp & 255n));
         temp /= 256n;
       } while (temp != 0n);
       let length = array.length;
@@ -726,7 +726,7 @@ class CBOR {
         if (this.sequenceFlag && this.atFirstByte) {
           return CBOR.#MT_NULL;
         }
-          eofError();
+        throw Error("Reading past end of buffer");
       }
       this.atFirstByte = false;
       return this.cbor[this.counter++];
@@ -751,18 +751,30 @@ class CBOR {
             return value;
         }
 */
+    unsupportedTag = function(tag) {
+      throw Error("Unsupported tag: " + CBOR.#twoHex(tag));
+    }
+
+    rangeLimitedBigInt = function(bigInt) {
+      if (bigInt > 0xffffffffn) {
+        throw Error("Length limited to 0xffffffff");
+      }
+      return Number(bigInt);
+    }
 
     getObject = function() {
-      let tag = readByte();
+      let tag = this.readByte();
+      let n = tag & 0x1f;
+      console.log("Get: "+ tag);
 
       // Begin with CBOR types that are uniquely defined by the tag byte.
       switch (tag) {
-        case MT_BIG_NEGATIVE:
-        case MT_BIG_UNSIGNED:
+        case CBOR.#MT_BIG_NEGATIVE:
+        case CBOR.#MT_BIG_UNSIGNED:
           let byteArray = this.getObject().getBytes();
           if ((byteArray.length == 0 || byteArray[0] == 0 || byteArray.length <= 8) && 
-              deterministicMode) {
-            reportError(STDERR_LEADING_ZERO);
+              this.deterministicMode) {
+            throw Error("Non-deterministic big integer encoding");
           }
           let bigInt = BigInt(0);
           byteArray.forEach(byte => {
@@ -774,7 +786,7 @@ class CBOR {
           }
           return new CBOR.BigInt(bigInt);
 /*
-          case MT_FLOAT16:
+          case CBOR.#MT_FLOAT16:
               let float16 = readNumber(2);
               let unsignedf16 = float16 & ~FLOAT16_NEG_ZERO;
 
@@ -824,99 +836,102 @@ class CBOR {
                                               // Put sign bit in position.
                                               ((float16 & FLOAT16_NEG_ZERO) << (64 - 16)));
 
-            case MT_FLOAT32:
+            case CBOR.#MT_FLOAT32:
                 long float32 = getLongFromBytes(4);
                 return checkDoubleConversion(tag, 
                                               float32,
                                               Double.doubleToLongBits(
                                                       Float.intBitsToFloat((int)float32)));
  
-            case MT_FLOAT64:
+            case CBOR.#MT_FLOAT64:
                 long float64 = getLongFromBytes(8);
                 return checkDoubleConversion(tag, float64, float64);
 */
-            case MT_NULL:
-                return new CBORNull();
+        case CBOR.#MT_NULL:
+          return new CBOR.Null();
                     
-            case MT_TRUE:
-            case MT_FALSE:
-                return new CBORBool(tag == MT_TRUE);
+        case CBOR.#MT_TRUE:
+        case CBOR.#MT_FALSE:
+          return new CBOR.Bool(tag == MT_TRUE);
+      }
+      // Then decode CBOR types that blend length of data in the tag byte.
+      n = tag & 0x1f;
+      if (n > 27n) {
+        this.unsupportedTag(tag);
+      }
+      if (n > 23) {
+        // For 1, 2, 4, and 8 byte N.
+        let diff = n - 24;
+        let q = 1 << diff;
+        n = 0n;
+        while (--q >= 0) {
+          n <<= 8;
+          n |= BigInt(readByte());
         }
-/*
-            // Then decode CBOR types that blend length of data in the tag byte.
-            long n = tag & 0x1fl;
-            if (n > 27) {
-                unsupportedTag(tag);
-            }
-            if (n > 23) {
-                // For 1, 2, 4, and 8 byte N.
-                int q = 1 << (n - 24);
-                // 1: 00000000ffffffff
-                // 2: 000000ffffffff00
-                // 4: 0000ffffffff0000
-                // 8: ffffffff00000000
-                long mask = MASK_LOWER_32 << (q / 2) * 8;
-                n = 0;
-                while (--q >= 0) {
-                    n <<= 8;
-                    n |= readByte();
-                }
-                // If the upper half (for 2, 4, 8 byte N) of N or a single byte
-                // N is zero, a shorter variant should have been used.
-                // In addition, a single byte N must be > 23. 
-                if (((n & mask) == 0 || (n > 0 && n < 24)) && deterministicMode) {
-                    reportError(STDERR_NON_DETERMINISTIC_N);
-                }
-            }
-            // N successfully decoded, now switch on major type (upper three bits).
-            switch (tag & 0xe0) {
-                case MT_TAG:
-                    CBORObject tagData = getObject();
-                    if (n == CBORTag.RESERVED_TAG_COTX) {
-                        CBORArray holder = tagData.getArray(2);
-                        if (holder.get(0).getType() != CBORTypes.TEXT_STRING) {
-                            reportError("Tag syntax " +  CBORTag.RESERVED_TAG_COTX +
-                                        "([\"string\", CBOR object]) expected");
-                        }
-                    }
-                    return new CBORTag(n, tagData);
+        // If the upper half (for 2, 4, 8 byte N) of N or a single byte
+        // N is zero, a shorter variant should have been used.
+        // In addition, N must be > 23. 
+        if ((n < 24n || (--diff >= 0 && BigInt(~CBOR.#RANGES[diff]) & n)) && 
+            this.deterministicMode) {
+          throw Error("Non-deterministic integer encoding");
+        }
+      } else {
+        n = BigInt(n);
+      }
+            console.log("N=" + n);
+      // N successfully decoded, now switch on major type (upper three bits).
+      switch (tag & 0xe0) {
+        case CBOR.#MT_TAG:
+          let tagData = getObject();
+          if (n == CBORTag.RESERVED_TAG_COTX) {
+              let holder = tagData.getArray(2);
+              if (holder.get(0).getType() != CBORTypes.TEXT_STRING) {
+                  reportError("Tag syntax " +  CBORTag.RESERVED_TAG_COTX +
+                              "([\"string\", CBOR object]) expected");
+              }
+          }
+          return new CBOR.Tag(n, tagData);
 
-                case MT_UNSIGNED:
-                    return new CBORInt(n, true);
-    
-                case MT_NEGATIVE:
-                    return new CBORInt(n, false);
-    
-                case MT_BYTE_STRING:
-                    return new CBORBytes(readBytes(checkLength(n)));
-    
-                case MT_TEXT_STRING:
-                    return new CBORString(UTF8.decode(readBytes(checkLength(n))));
-    
-                case MT_ARRAY:
-                    CBORArray cborArray = new CBORArray();
-                    for (int q = checkLength(n); --q >= 0; ) {
-                        cborArray.add(getObject());
-                    }
-                    return cborArray;
-    
-                case MT_MAP:
-                    CBORMap cborMap = new CBORMap();
-                    cborMap.deterministicMode = deterministicMode;
-                    cborMap.constrainedKeys = constrainedMapKeys;
-                    for (int q = checkLength(n); --q >= 0; ) {
-                        cborMap.set(getObject(), getObject());
-                    }
-                    // Programmatically added elements sort automatically. 
-                    cborMap.deterministicMode = false;
-                    return cborMap;
-    
-                default:
-                    unsupportedTag(tag);
+        case CBOR.#MT_UNSIGNED:
+            if (n >= BigInt(Number.MAX_SAFE_INTEGER)) {
+              return new CBOR.BigInt(n);
             }
-            return null;  // For the compiler only...
-        }
-*/
+            return new CBOR.Int(Number(n), true);
+    
+        case CBOR.#MT_NEGATIVE:
+            let n = ~n;
+            if (n <= BigInt(-Number.MAX_SAFE_INTEGER)) {
+              return new CBOR.BigInt(value);
+            }
+            return new CBOR.Int(Number(n), false);
+    
+        case CBOR.#MT_BYTES:
+            return new CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(n)));
+    
+        case CBOR.#MT_STRING:
+            return new CBOR.String(UTF8.decode(this.readBytes(this.rangeLimitedBigInt(n))));
+    
+        case CBOR.#MT_ARRAY:
+          let cborArray = new CBOR.Array();
+          for (let q = this.rangeLimitedBigInt(n); --q >= 0;) {
+              cborArray.add(getObject());
+          }
+          return cborArray;
+    
+        case CBOR.#MT_MAP:
+          let cborMap = new CBOR.Map();
+          cborMap.deterministicMode = deterministicMode;
+          cborMap.constrainedKeys = constrainedMapKeys;
+          for (let q = this.rangeLimitedBigInt(n); --q >= 0;) {
+            cborMap.set(getObject(), getObject());
+          }
+          // Programmatically added elements sort automatically. 
+          cborMap.deterministicMode = false;
+          return cborMap;
+    
+        default:
+          this.unsupportedTag(tag);
+      }
     }
   }
 
@@ -925,7 +940,8 @@ class CBOR {
 ///////////////////////////
 
   static decode = function(cbor) {
-    let decoder = new CBOR.#_decoder(CBOR.#bytesCheck(cbor));
+    let decoder = new CBOR.#_decoder(CBOR.#bytesCheck(cbor), false, false, false);
+    return decoder.getObject();
   }
 
 ///////////////////////////
