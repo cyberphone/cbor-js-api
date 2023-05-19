@@ -764,8 +764,7 @@ class CBOR {
 
     getObject = function() {
       let tag = this.readByte();
-      let n = tag & 0x1f;
-      console.log("Get: "+ tag);
+      console.log("Get: "+ tag);          
 
       // Begin with CBOR types that are uniquely defined by the tag byte.
       switch (tag) {
@@ -852,69 +851,73 @@ class CBOR {
                     
         case CBOR.#MT_TRUE:
         case CBOR.#MT_FALSE:
-          return new CBOR.Bool(tag == MT_TRUE);
+          return new CBOR.Bool(tag == CBOR.#MT_TRUE);
       }
       // Then decode CBOR types that blend length of data in the tag byte.
-      n = tag & 0x1f;
-      if (n > 27n) {
+      let n = tag & 0x1f;
+      let bigN = 0n;
+      if (n > 27) {
         this.unsupportedTag(tag);
       }
       if (n > 23) {
         // For 1, 2, 4, and 8 byte N.
         let diff = n - 24;
         let q = 1 << diff;
-        n = 0n;
         while (--q >= 0) {
-          n <<= 8;
-          n |= BigInt(readByte());
+          bigN <<= 8n;
+          bigN |= BigInt(this.readByte());
         }
+        console.log("bigN=" + bigN);
         // If the upper half (for 2, 4, 8 byte N) of N or a single byte
         // N is zero, a shorter variant should have been used.
         // In addition, N must be > 23. 
-        if ((n < 24n || (--diff >= 0 && BigInt(~CBOR.#RANGES[diff]) & n)) && 
+        if ((bigN < 24n || (--diff >= 0 && !(~BigInt(CBOR.#RANGES[diff]) & bigN))) && 
             this.deterministicMode) {
           throw Error("Non-deterministic integer encoding");
         }
       } else {
-        n = BigInt(n);
+        bigN = BigInt(n);
       }
-            console.log("N=" + n);
+            console.log("N=" + bigN + " " + (typeof BigN == 'bigint'));
+            console.log(bigN);
       // N successfully decoded, now switch on major type (upper three bits).
       switch (tag & 0xe0) {
         case CBOR.#MT_TAG:
           let tagData = getObject();
-          if (n == CBORTag.RESERVED_TAG_COTX) {
-              let holder = tagData.getArray(2);
-              if (holder.get(0).getType() != CBORTypes.TEXT_STRING) {
-                  reportError("Tag syntax " +  CBORTag.RESERVED_TAG_COTX +
-                              "([\"string\", CBOR object]) expected");
-              }
+          /*
+          if (bigN == CBORTag.RESERVED_TAG_COTX) {
+            let holder = tagData.getArray(2);
+            if (holder.get(0).getType() != CBORTypes.TEXT_STRING) {
+                reportError("Tag syntax " +  CBORTag.RESERVED_TAG_COTX +
+                            "([\"string\", CBOR object]) expected");
+            }
           }
-          return new CBOR.Tag(n, tagData);
+          */
+          return new CBOR.Tag(bigN, tagData);
 
         case CBOR.#MT_UNSIGNED:
-            if (n >= BigInt(Number.MAX_SAFE_INTEGER)) {
-              return new CBOR.BigInt(n);
-            }
-            return new CBOR.Int(Number(n), true);
+          if (bigN > BigInt(Number.MAX_SAFE_INTEGER)) {
+            return new CBOR.BigInt(bigN);
+          }
+          return new CBOR.Int(Number(bigN));
     
         case CBOR.#MT_NEGATIVE:
-            let n = ~n;
-            if (n <= BigInt(-Number.MAX_SAFE_INTEGER)) {
-              return new CBOR.BigInt(value);
-            }
-            return new CBOR.Int(Number(n), false);
+          bigN = ~bigN;
+          if (bigN < BigInt(-Number.MAX_SAFE_INTEGER)) {
+            return new CBOR.BigInt(bigN);
+          }
+          return new CBOR.Int(Number(bigN));
     
         case CBOR.#MT_BYTES:
-            return new CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(n)));
+          return new CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(bigN)));
     
         case CBOR.#MT_STRING:
-            return new CBOR.String(UTF8.decode(this.readBytes(this.rangeLimitedBigInt(n))));
+          return new CBOR.String(UTF8.decode(this.readBytes(this.rangeLimitedBigInt(bigN))));
     
         case CBOR.#MT_ARRAY:
           let cborArray = new CBOR.Array();
-          for (let q = this.rangeLimitedBigInt(n); --q >= 0;) {
-              cborArray.add(getObject());
+          for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
+            cborArray.add(getObject());
           }
           return cborArray;
     
@@ -922,7 +925,7 @@ class CBOR {
           let cborMap = new CBOR.Map();
           cborMap.deterministicMode = deterministicMode;
           cborMap.constrainedKeys = constrainedMapKeys;
-          for (let q = this.rangeLimitedBigInt(n); --q >= 0;) {
+          for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
             cborMap.set(getObject(), getObject());
           }
           // Programmatically added elements sort automatically. 
