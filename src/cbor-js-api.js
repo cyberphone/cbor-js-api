@@ -167,8 +167,8 @@ class CBOR {
       let temp = BigInt(value);
       do {
         array.push(Number(temp & 255n));
-        temp /= 256n;
-      } while (temp != 0n);
+        temp >>= 8n;
+      } while (temp);
       let length = array.length;
       // Prepare for "Int" encoding (1, 2, 4, 8).  Only 3, 5, 6, and 7 need an action.
       while (length < 8 && length > 2 && length != 4) {
@@ -733,10 +733,10 @@ class CBOR {
     }
         
     readBytes = function (length) {
-      let result = new Uint8Arry(length);
+      let result = new Uint8Array(length);
       let q = -1; 
       while (++q < length) {
-        result[q] = readByte();
+        result[q] = this.readByte();
       }
       return result;
     }
@@ -775,12 +775,12 @@ class CBOR {
               this.deterministicMode) {
             throw Error("Non-deterministic big integer encoding");
           }
-          let bigInt = BigInt(0);
+          let bigInt = 0n;
           byteArray.forEach(byte => {
-            bigInt <<= 8;
+            bigInt <<= 8n;
             bigInt += BigInt(byte);
           });
-          if (tag == MT_BIG_NEGATIVE) {
+          if (tag == CBOR.#MT_BIG_NEGATIVE) {
             bigInt = ~bigInt;
           }
           return new CBOR.BigInt(bigInt);
@@ -865,13 +865,13 @@ class CBOR {
         let q = 1 << diff;
         while (--q >= 0) {
           bigN <<= 8n;
-          bigN |= BigInt(this.readByte());
+          bigN += BigInt(this.readByte());
         }
         console.log("bigN=" + bigN);
         // If the upper half (for 2, 4, 8 byte N) of N or a single byte
         // N is zero, a shorter variant should have been used.
         // In addition, N must be > 23. 
-        if ((bigN < 24n || (--diff >= 0 && !(~BigInt(CBOR.#RANGES[diff]) & bigN))) && 
+        if ((bigN < 24n || (diff > 0 && !(~BigInt(CBOR.#RANGES[diff - 1]) & bigN))) && 
             this.deterministicMode) {
           throw Error("Non-deterministic integer encoding");
         }
