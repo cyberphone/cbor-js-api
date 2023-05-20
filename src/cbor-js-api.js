@@ -163,8 +163,7 @@ class CBOR {
       } else {
         tag = CBOR.#MT_UNSIGNED;
       }
-
-      // Somewhat awkward code for converting BigInt to Uint8Array.
+      // Convert BigInt to Uint8Array (but with a twist).
       let array = [];
       let temp = BigInt(number);
       do {
@@ -178,7 +177,6 @@ class CBOR {
         length++;
       }
       let byteArray = new Uint8Array(array.reverse());
-
       // Does this number qualify as a "BigInt"?
       if (length <= 8) {
         // Apparently not, encode it as "Int".
@@ -310,7 +308,8 @@ class CBOR {
                 f16signif;
                 this.#encoded = CBOR.#f16Encoding(f16bin);
           } else {
-            // Converting to F32 returned a truncated result. Full 64-bit representation is required.
+            // Converting to F32 returned a truncated result.
+            // Full 64-bit representation is required.
             this.#tag = CBOR.#MT_FLOAT64;
             this.#encoded = CBOR.#f64Encoding(number);
           }
@@ -614,7 +613,8 @@ class CBOR {
 
     getConditionally = function(key, defaultValue) {
       let entry = this.#lookup(key, false);
-      defaultValue = CBOR.#cborArguentCheck(defaultValue);
+      // Note: defaultValue my be 'null'
+      defaultValue = defaultValue ? CBOR.#cborArguentCheck(defaultValue) : null;
       return entry ? entry.object : defaultValue;
     }
 
@@ -981,16 +981,16 @@ class CBOR {
     return encoded;
   }
 
-  static #addArrays = function(a1, a2) {
-  let res = new Uint8Array(a1.length + a2.length);
+  static #addArrays = function(a, b) {
+  let result = new Uint8Array(a.length + b.length);
     let q = 0;
-    while (q < a1.length) {
-      res[q] = a1[q++];
+    while (q < a.length) {
+      result[q] = a[q++];
     }
-    for (let i = 0; i < a2.length; i++) {
-      res[q + i] = a2[i];
+    for (let i = 0; i < b.length; i++) {
+      result[q + i] = b[i];
     }
-    return res;
+    return result;
   }
 
   static #compare = function(a, b) {
@@ -1004,9 +1004,9 @@ class CBOR {
     return a.length - b.length;
   }
 
-  static #bytesCheck = function(bytes) {
-    if (bytes instanceof Uint8Array) {
-      return bytes;
+  static #bytesCheck = function(byteArray) {
+    if (byteArray instanceof Uint8Array) {
+      return byteArray;
     }
     throw Error("Argument is not an 'Uint8Array'");
   }
@@ -1018,13 +1018,13 @@ class CBOR {
     return object;
   }
 
-  static #intCheck = function(int) {
-    CBOR.#typeCheck(int, 'number');
-    if (!Number.isSafeInteger(int)) {
-      throw Error(Number.isInteger(int) ?
+  static #intCheck = function(number) {
+    CBOR.#typeCheck(number, 'number');
+    if (!Number.isSafeInteger(number)) {
+      throw Error(Number.isInteger(number) ?
         "Argument is outside of Number.MAX_SAFE_INTEGER" : "Argument is not an integer");
     }
-    return int;
+    return number;
   }
 
   static #Printer = class {
@@ -1045,10 +1045,7 @@ class CBOR {
 
     endMap = function(notEmpty) {
       this.indentationLevel--;
-      if (notEmpty) {
-        return this.newlineAndIndent() + '}';
-      }
-      return '}';
+      return notEmpty ? this.newlineAndIndent() + '}' : '}';
     }
   }
   
@@ -1070,11 +1067,11 @@ class CBOR {
     return CBOR.#oneHex(byte / 16) + CBOR.#oneHex(byte % 16);
   }
 
-  static #cborArguentCheck = function(value) {
-    if (value instanceof CBOR.#CBORObject) {
-      return value;
+  static #cborArguentCheck = function(object) {
+    if (object instanceof CBOR.#CBORObject) {
+      return object;
     }
-    throw Error(value ? "Argument is not a CBOR object: " + value.constructor.name : "'null'");
+    throw Error(object ? "Argument is not a CBOR object: " + value.constructor.name : "'null'");
   }
 
   static toHex = function (byteArray) {
