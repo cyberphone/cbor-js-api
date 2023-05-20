@@ -237,7 +237,8 @@ class CBOR {
           if (f32 == float) {
             // Nothing was lost during the conversion, F32 or F16 is on the menu.
             this.#tag = CBOR.#MT_FLOAT32;
-            u8 = CBOR.#f64Encoding(f32);
+            // However, JavaScript always defer to F64 for "Number".
+            u8 = CBOR.#f64Encoding(float);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
             if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
               console.log(u8.toString());
@@ -513,17 +514,27 @@ class CBOR {
     #lastEntry;
     #deterministicMode = false;
 
+    static #Entry = class {
+
+       constructor(key, value) {
+         this.key = key;
+         this.encodedKey = key.encode();
+         this.value = value;
+         this.next = null;
+       }
+
+       compare = function(encodedKey) {
+         return CBOR.#compare(this.encodedKey, encodedKey);
+       }
+    }
+
     set = function(key, value) {
-      let newEntry = {};
-      newEntry.key = this.#getKey(key);
-      newEntry.value = CBOR.#cborArguentCheck(value);
-      newEntry.encodedKey = key.encode();
-      newEntry.next = null;
+      let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(value));
       if (this.#root) {
         // Second key etc.
         if (this.#deterministicMode) {
           // Normal case for parsing.
-          let diff = CBOR.#compareEntry(this.#lastEntry, newEntry.encodedKey);
+          let diff = this.#lastEntry.compare(newEntry.encodedKey);
           if (diff >= 0) {
             throw Error((diff == 0 ? 
               "Duplicate: " : "Non-deterministic order: ") + key.toString());
@@ -535,7 +546,7 @@ class CBOR {
           let precedingEntry = null;
           let diff = 0;
           for (let entry = this.#root; entry; entry = entry.next) {
-            diff = CBOR.#compareEntry(entry, newEntry.encodedKey);
+            diff = entry.compare(newEntry.encodedKey);
             if (diff == 0) {
               throw Error("Duplicate: " + key);                      
             }
@@ -580,7 +591,7 @@ class CBOR {
     #lookup(key, mustExist) {
       let encodedKey = this.#getKey(key).encode();
       for (let entry = this.#root; entry; entry = entry.next) {
-        if (CBOR.#compareEntry(entry, encodedKey) == 0) {
+        if (entry.compare(encodedKey) == 0) {
           return entry;
         }
       }
@@ -597,7 +608,7 @@ class CBOR {
     getConditionally = function(key, defaultValue) {
       let entry = this.#lookup(key, false);
       defaultValue = CBOR.#cborArguentCheck(defaultValue);
-      return entry == null ? defaultValue : entry.value;
+      return entry ? entry.value : defaultValue;
     }
 
     getKeys = function() {
@@ -612,7 +623,7 @@ class CBOR {
       let encodedKey = this.#getKey(key).encode();
       let precedingEntry = null;
       for (let entry = this.#root; entry; entry = entry.next) {
-        if (CBOR.#compareEntry(entry, encodedKey) == 0) {
+        if (entry.compare(encodedKey) == 0) {
           if (precedingEntry == null) {
             // Remove root key.  It may be alone.
             this.#root = entry.next;
@@ -975,16 +986,15 @@ class CBOR {
     return res;
   }
 
-  static #compareEntry = function(entry, testKey) {
-    let encodedKey = entry.encodedKey;
-    let minIndex = Math.min(encodedKey.length, testKey.length);
+  static #compare = function(a, b) {
+    let minIndex = Math.min(a.length, b.length);
     for (let i = 0; i < minIndex; i++) {
-      let diff = encodedKey[i] - testKey[i];
+      let diff = a[i] - b[i];
       if (diff != 0) {
         return diff;
       }
     }
-    return encodedKey.length - testKey.length;
+    return a.length - b.length;
   }
 
   static #bytesCheck = function(bytes) {
