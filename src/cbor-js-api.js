@@ -14,9 +14,6 @@ class CBOR {
   // Super class for all CBOR types.
   static #CBORObject = class {
 
-    // Overridden getter in derived classes.
-    _get = function() {};
-
     constructor() {}
 
     getInt = function() {
@@ -65,6 +62,13 @@ class CBOR {
  
     getTag = function() {
       return this.#checkTypeAndGetValue(CBOR.Tag);
+    }
+
+    equals = function(object) {
+      if (object && object instanceof CBOR.#CBORObject) {
+        return CBOR.#compare(this.encode(), object.encode()) == 0;
+      }
+      return false;
     }
  
     #checkTypeAndGetValue = function(className) {
