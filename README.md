@@ -4,6 +4,8 @@ This repository holds a JavaScript API _in development_.  The API
 loosely mimics the "JSON" object by only exposing a single global object,
 unsurprisingly named "CBOR".
 
+<table align='center'><tr><td><i>Note that this API is not ready for external use!</i></td></tr></table>
+
 ### Components
 - CBOR encoder
 - CBOR decoder
