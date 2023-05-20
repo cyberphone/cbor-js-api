@@ -486,8 +486,8 @@ class CBOR {
 
     encode = function() {
       let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#array.length);
-      this.#array.forEach(value => {
-        encoded = CBOR.#addArrays(encoded, value.encode());
+      this.#array.forEach(object => {
+        encoded = CBOR.#addArrays(encoded, object.encode());
       });
       return encoded;
     }
@@ -495,12 +495,12 @@ class CBOR {
     toString = function(cborPrinter) {
       let buffer = '[';
       let notFirst = false;
-      this.#array.forEach(value => {
+      this.#array.forEach(object => {
         if (notFirst) {
           buffer += ', ';
         }
         notFirst = true;
-        buffer += value.toString(cborPrinter);
+        buffer += object.toString(cborPrinter);
       });
       return buffer + ']';
     }
@@ -1075,7 +1075,7 @@ class CBOR {
     if (object instanceof CBOR.#CBORObject) {
       return object;
     }
-    throw Error(object ? "Argument is not a CBOR object: " + value.constructor.name : "'null'");
+    throw Error(object ? "Argument is not a CBOR object: " + object.constructor.name : "'null'");
   }
 
   static toHex = function (byteArray) {
