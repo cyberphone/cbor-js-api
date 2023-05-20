@@ -7,6 +7,8 @@
 // Author: Anders Rundgren (https://github.com/cyberphone)                     //
 /////////////////////////////////////////////////////////////////////////////////
 
+'use strict';
+
 class CBOR {
 
   // Super class for all CBOR types.
@@ -91,7 +93,7 @@ class CBOR {
 
   static #RANGES = [0xff, 0xffff, 0xffffffff];
 
-  static #SPECIAL_CHARACTERS = [
+  static #ESCAPE_CHARACTERS = [
  //   0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
       1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 , 'b', 't', 'n',  1 , 'f', 'r',  1 ,  1 ,
       1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,
@@ -110,17 +112,17 @@ class CBOR {
  
   static Int = class extends CBOR.#CBORObject {
 
-    #int;
+    #number;
 
     // Note that for integers with a magnitude above 2^53 - 1, "BigInt" must be used. 
-    constructor(int) {
+    constructor(number) {
       super();
-      this.#int = CBOR.#intCheck(int);
+      this.#number = CBOR.#intCheck(number);
     }
     
     encode = function() {
       let tag;
-      let n = this.#int;
+      let n = this.#number;
       if (n < 0) {
         tag = CBOR.#MT_NEGATIVE;
         n = -n - 1;
@@ -131,11 +133,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#int.toString();
+      return this.#number.toString();
     }
 
     _get = function() {
-      return this.#int;
+      return this.#number;
     }
   }
 
@@ -145,26 +147,26 @@ class CBOR {
  
   static BigInt = class extends CBOR.#CBORObject {
 
-    #bigInt;
+    #number;
 
-    constructor(bigInt) {
+    constructor(number) {
       super();
-      this.#bigInt = CBOR.#typeCheck(bigInt, 'bigint');
+      this.#number = CBOR.#typeCheck(number, 'bigint');
     }
     
     encode = function() {
       let tag;
-      let value = this.#bigInt
-      if (value < 0) {
+      let number = this.#number
+      if (number < 0) {
         tag = CBOR.#MT_NEGATIVE;
-        value = ~value;
+        number = ~number;
       } else {
         tag = CBOR.#MT_UNSIGNED;
       }
 
       // Somewhat awkward code for converting BigInt to Uint8Array.
       let array = [];
-      let temp = BigInt(value);
+      let temp = BigInt(number);
       do {
         array.push(Number(temp & 255n));
         temp >>= 8n;
@@ -177,7 +179,7 @@ class CBOR {
       }
       let byteArray = new Uint8Array(array.reverse());
 
-      // Does this value qualify as a "BigInt"?
+      // Does this number qualify as a "BigInt"?
       if (length <= 8) {
         // Apparently not, encode it as "Int".
         if (length == 1 && byteArray[0] < 24) {
@@ -196,11 +198,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#bigInt.toString();
+      return this.#number.toString();
     }
  
     _get = function() {
-      return this.#bigInt;
+      return this.#number;
     }
   }
 
@@ -211,47 +213,48 @@ class CBOR {
  
   static Float = class extends CBOR.#CBORObject {
 
-    #float;
+    #number;
     #encoded;
     #tag;
 
-    constructor(float) {
+    constructor(number) {
       super();
-      this.#float = CBOR.#typeCheck(float, 'number');
+      this.#number = CBOR.#typeCheck(number, 'number');
       // Begin catching the F16 edge cases.
       this.#tag = CBOR.#MT_FLOAT16;
-      if (Number.isNaN(float)) {
+      if (Number.isNaN(number)) {
         this.#encoded = CBOR.#f16Encoding(0x7e00);
-      } else if (!Number.isFinite(float)) {
-        this.#encoded = CBOR.#f16Encoding(float < 0 ? 0xfc00 : 0x7c00);
-      } else if (Math.abs(float) == 0) {
-        this.#encoded = CBOR.#f16Encoding(Object.is(float,-0) ? 0x8000 : 0x0000);
+      } else if (!Number.isFinite(number)) {
+        this.#encoded = CBOR.#f16Encoding(number < 0 ? 0xfc00 : 0x7c00);
+      } else if (Math.abs(number) == 0) {
+        this.#encoded = CBOR.#f16Encoding(Object.is(number,-0) ? 0x8000 : 0x0000);
       } else {
         // It is apparently a genuine number.
         // The following code depends on that Math.fround works as expected.
-        let f32 = Math.fround(float);
+        let f32 = Math.fround(number);
         let u8;
         let f32exp;
         let f32signif;
         while (true) {  // "goto" surely beats quirky loop/break/return/flag constructs...
-          if (f32 == float) {
+          if (f32 == number) {
             // Nothing was lost during the conversion, F32 or F16 is on the menu.
             this.#tag = CBOR.#MT_FLOAT32;
             // However, JavaScript always defer to F64 for "Number".
-            u8 = CBOR.#f64Encoding(float);
+            u8 = CBOR.#f64Encoding(number);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
+// FOR REMOVAL
             if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
-              console.log(u8.toString());
               throw Error("unexpected fraction: " + f32);
             }
             f32signif = ((u8[1] & 0x0f) << 19) + (u8[2] << 11) + (u8[3] << 3) + (u8[4] >> 5)
-  //          if (Math.abs(f32) == 5.960465188081798e-8) console.log("b=" + toBin(u8) + " e=" + (((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4)) + " ec=" + f32exp + " f32signif=" + f32signif + " s=" + ((u8[0] & 0x80) * 16777216));
+            // Very small F32 values may require subnormal representation.
             if (f32exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f32signif += 1 << 23;
               // Always perform at least one turn.
               f32exp--;
               do {
+// FOR REMOVAL
                 if ((f32signif & 1) != 0) {
                   throw Error("unexpected offscale: " + f32);
                 }
@@ -260,6 +263,7 @@ class CBOR {
             }
             // If it is a subnormal F32 or if F16 would lose precision, stick to F32.
             if (f32exp == 0 || f32signif & 0x1fff) {
+// FOR REMOVAL
               console.log('@@@ skip ' + (f32exp ? "f32prec" : "f32denorm"));
               break;
             }
@@ -268,10 +272,11 @@ class CBOR {
             let f16signif = f32signif >> 13;
             // If too large for F16, stick to F32.
             if (f16exp > 30) {
+// FOR REMOVAL
               console.log("@@@ skip above f16exp=" + f16exp);
               break;
             }
-            // Finally, is this value too small for F16?
+            // Finally, is this number too small for F16?
             if (f16exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f16signif += 1 << 10;
@@ -281,6 +286,7 @@ class CBOR {
                 // Losing bits is not an option.
                 if ((f16signif & 1) != 0) {
                   f16signif = 0;
+// FOR REMOVAL
                   console.log("@@@ skip under f16");
                   break;
                 }
@@ -290,9 +296,10 @@ class CBOR {
               if (f16signif == 0) {
                 break;
               }
+// FOR REMOVAL
               console.log("@@@ succeeded f16 denorm");
             }
-            // 16 bits is all you need.
+            // A rarity, 16 bits turned out being sufficient for representing number.
             this.#tag = CBOR.#MT_FLOAT16;
             let f16bin = 
                 // Put sign bit in position.
@@ -303,14 +310,14 @@ class CBOR {
                 f16signif;
                 this.#encoded = CBOR.#f16Encoding(f16bin);
           } else {
-            // Converting to F32 returned a truncated result. Full 64-bit float is required.
+            // Converting to F32 returned a truncated result. Full 64-bit representation is required.
             this.#tag = CBOR.#MT_FLOAT64;
-            this.#encoded = CBOR.#f64Encoding(float);
+            this.#encoded = CBOR.#f64Encoding(number);
           }
           // Common F16 and F64 return point.
           return;
         }
-        // break: 32 bits are apparently needed for maintaining magnitude and precision.
+        // Broken loop: 32 bits are apparently needed for maintaining magnitude and precision.
         let f32bin = 
             // Put sign bit in position. Why not << 24?  JS shift doesn't work above 2^31...
             ((u8[0] & 0x80) * 0x1000000) +
@@ -328,11 +335,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#float.toString();
+      return this.#number.toString();
     }
 
     _get = function() {
-      return this.#float;
+      return this.#number;
     }
   }
 
@@ -360,7 +367,7 @@ class CBOR {
         let c = this.#string.charCodeAt(q);
         if (c <= 0x5c) {
           let convertedCharacter;
-          if ((convertedCharacter = CBOR.#SPECIAL_CHARACTERS[c]) != 0) {
+          if ((convertedCharacter = CBOR.#ESCAPE_CHARACTERS[c]) != 0) {
             buffer += '\\';
             if (convertedCharacter == 1) {
               buffer += 'u00' + CBOR.#twoHex(c);
@@ -455,8 +462,8 @@ class CBOR {
 
     #array = [];
 
-    add = function(value) {
-      this.#array.push(CBOR.#cborArguentCheck(value));
+    add = function(object) {
+      this.#array.push(CBOR.#cborArguentCheck(object));
       return this;
     }
 
@@ -516,10 +523,10 @@ class CBOR {
 
     static #Entry = class {
 
-       constructor(key, value) {
+       constructor(key, object) {
          this.key = key;
          this.encodedKey = key.encode();
-         this.value = value;
+         this.object = object;
          this.next = null;
        }
 
@@ -528,8 +535,8 @@ class CBOR {
        }
     }
 
-    set = function(key, value) {
-      let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(value));
+    set = function(key, object) {
+      let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(object));
       if (this.#root) {
         // Second key etc.
         if (this.#deterministicMode) {
@@ -553,13 +560,13 @@ class CBOR {
             if (diff > 0) {
               // New key is (lexicographically) smaller than current entry.
               if (precedingEntry == null) {
-                  // New key is smaller than root. New key becomes root.
-                  newEntry.next = this.#root;
-                  this.#root = newEntry;
+                // New key is smaller than root. New key becomes root.
+                newEntry.next = this.#root;
+                this.#root = newEntry;
               } else {
-                  // New key is smaller than an entry above root. Insert before current entry.
-                  newEntry.next = entry;
-                  precedingEntry.next = newEntry;
+                // New key is smaller than an entry above root. Insert before current entry.
+                newEntry.next = entry;
+                precedingEntry.next = newEntry;
               }
               // Done, break out of the loop.
               break;
@@ -602,13 +609,13 @@ class CBOR {
     }
 
     get = function(key) {
-      return this.#lookup(key, true).value;
+      return this.#lookup(key, true).object;
     }
 
     getConditionally = function(key, defaultValue) {
       let entry = this.#lookup(key, false);
       defaultValue = CBOR.#cborArguentCheck(defaultValue);
-      return entry ? entry.value : defaultValue;
+      return entry ? entry.object : defaultValue;
     }
 
     getKeys = function() {
@@ -631,7 +638,7 @@ class CBOR {
             // Remove key somewhere above root.
             precedingEntry.next = entry.next;
           }
-          return entry.value;
+          return entry.object;
         }
         precedingEntry = entry;
       }
@@ -648,7 +655,7 @@ class CBOR {
       for (let entry = this.#root; entry; entry = entry.next) {
         q++;
         encoded = CBOR.#addArrays(encoded, 
-                      CBOR.#addArrays(entry.key.encode(), entry.value.encode()));
+                      CBOR.#addArrays(entry.key.encode(), entry.object.encode()));
       }
       return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_MAP, q), encoded);
     }
@@ -665,7 +672,7 @@ class CBOR {
         }
         notFirst = true;
         buffer += cborPrinter.newlineAndIndent();
-        buffer += entry.key.toString(cborPrinter) + ': ' + entry.value.toString(cborPrinter);
+        buffer += entry.key.toString(cborPrinter) + ': ' + entry.object.toString(cborPrinter);
       }
       return buffer + cborPrinter.endMap(notFirst);
     }
@@ -756,11 +763,11 @@ class CBOR {
       throw Error("Unsupported tag: " + CBOR.#twoHex(tag));
     }
 
-    rangeLimitedBigInt = function(bigInt) {
-      if (bigInt > 0xffffffffn) {
+    rangeLimitedBigInt = function(number) {
+      if (number > 0xffffffffn) {
         throw Error("Length limited to 0xffffffff");
       }
-      return Number(bigInt);
+      return Number(number);
     }
 
     getObject = function() {
@@ -776,15 +783,15 @@ class CBOR {
               this.deterministicMode) {
             throw Error("Non-deterministic big integer encoding");
           }
-          let bigInt = 0n;
+          let number = 0n;
           byteArray.forEach(byte => {
-            bigInt <<= 8n;
-            bigInt += BigInt(byte);
+            number <<= 8n;
+            number += BigInt(byte);
           });
           if (tag == CBOR.#MT_BIG_NEGATIVE) {
-            bigInt = ~bigInt;
+            number = ~number;
           }
-          return new CBOR.BigInt(bigInt);
+          return new CBOR.BigInt(number);
 /*
         case CBOR.#MT_FLOAT16:
           this.floatConversion(0);
@@ -1070,30 +1077,13 @@ class CBOR {
     throw Error(value ? "Argument is not a CBOR object: " + value.constructor.name : "'null'");
   }
 
-  static toHex = function (bin) {
+  static toHex = function (byteArray) {
     let result = '';
-    for (let i = 0; i < bin.length; i++) {
-      result += CBOR.#twoHex(bin[i]);
+    for (let i = 0; i < byteArray.length; i++) {
+      result += CBOR.#twoHex(byteArray[i]);
     }
     return result;
   }
-
-}
-
-// To be DELETED
-
-toBin = function(bin) {
-  let exppos = bin.length == 8 ? 4 : 7;
-  let res = '';
-  for (let q = 0; q < bin.length; q++) {
-    for (let s = 7; s >= 0; s--) {
-       res += String.fromCharCode(48 + ((bin[q] >> s) & 1));
-       if ((q == 0 && s == 7) || (q == 1 && s == exppos)) {
-         res += ' ';
-       }
-    }
-  }
-  return res;
 }
 
 module.exports = CBOR;
