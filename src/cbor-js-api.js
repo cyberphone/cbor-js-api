@@ -523,7 +523,7 @@ class CBOR {
         // Second key etc.
         if (this.#deterministicMode) {
           // Normal case for parsing.
-          let diff = CBOR.#compare(this.#lastEntry, newEntry.encodedKey);
+          let diff = CBOR.#compareEntry(this.#lastEntry, newEntry.encodedKey);
           if (diff >= 0) {
             throw Error((diff == 0 ? 
               "Duplicate: " : "Non-deterministic order: ") + key.toString());
@@ -535,18 +535,18 @@ class CBOR {
           let precedingEntry = null;
           let diff = 0;
           for (let entry = this.#root; entry; entry = entry.next) {
-            diff = CBOR.#compare(entry, newEntry.encodedKey);
+            diff = CBOR.#compareEntry(entry, newEntry.encodedKey);
             if (diff == 0) {
               throw Error("Duplicate: " + key);                      
             }
             if (diff > 0) {
-              // New key is less than a current entry.
+              // New key is (lexicographically) smaller than current entry.
               if (precedingEntry == null) {
-                  // Less than root, means the root must be redefined.
+                  // New key is smaller than root. New key becomes root.
                   newEntry.next = this.#root;
                   this.#root = newEntry;
               } else {
-                  // Somewhere above root. Insert after preceding entry.
+                  // New key is smaller than an entry above root. Insert before current entry.
                   newEntry.next = entry;
                   precedingEntry.next = newEntry;
               }
@@ -556,7 +556,7 @@ class CBOR {
             // No luck in this round, continue searching.
             precedingEntry = entry;
           }
-          // Biggest key so far, insert at the end.
+          // Biggest key so far, insert it at the end.
           if (diff < 0) {
             precedingEntry.next = newEntry;
           }
@@ -580,7 +580,7 @@ class CBOR {
     #lookup(key, mustExist) {
       let encodedKey = this.#getKey(key).encode();
       for (let entry = this.#root; entry; entry = entry.next) {
-        if (CBOR.#compare(entry, encodedKey) == 0) {
+        if (CBOR.#compareEntry(entry, encodedKey) == 0) {
           return entry;
         }
       }
@@ -612,7 +612,7 @@ class CBOR {
       let encodedKey = this.#getKey(key).encode();
       let precedingEntry = null;
       for (let entry = this.#root; entry; entry = entry.next) {
-        if (CBOR.#compare(entry, encodedKey) == 0) {
+        if (CBOR.#compareEntry(entry, encodedKey) == 0) {
           if (precedingEntry == null) {
             // Remove root key.  It may be alone.
             this.#root = entry.next;
@@ -775,59 +775,60 @@ class CBOR {
           }
           return new CBOR.BigInt(bigInt);
 /*
-          case CBOR.#MT_FLOAT16:
-              let float16 = readNumber(2);
-              let unsignedf16 = float16 & ~FLOAT16_NEG_ZERO;
+        case CBOR.#MT_FLOAT16:
+          this.floatConversion(0);
+            let float16 = readNumber(2);
+            let unsignedf16 = float16 & ~FLOAT16_NEG_ZERO;
 
-              // Begin with the edge cases.
+            // Begin with the edge cases.
                     
-              if ((unsignedf16 & FLOAT16_POS_INFINITY) == FLOAT16_POS_INFINITY) {
-                  // Special "number"
-                  f64Bin = (unsignedf16 == FLOAT16_POS_INFINITY) ?
-                      // Non-deterministic representations of NaN will be flagged later.
-                      // NaN "signaling" is not supported, "quiet" NaN is all there is.
+            if ((unsignedf16 & FLOAT16_POS_INFINITY) == FLOAT16_POS_INFINITY) {
+                // Special "number"
+                f64Bin = (unsignedf16 == FLOAT16_POS_INFINITY) ?
+                    // Non-deterministic representations of NaN will be flagged later.
+                    // NaN "signaling" is not supported, "quiet" NaN is all there is.
 
-                      FLOAT64_POS_INFINITY : FLOAT64_NOT_A_NUMBER;
+                    FLOAT64_POS_INFINITY : FLOAT64_NOT_A_NUMBER;
 
-              } else if (unsignedf16 == 0) {
-                      f64Bin = FLOAT64_ZERO;
-              } else {
+            } else if (unsignedf16 == 0) {
+                    f64Bin = FLOAT64_ZERO;
+            } else {
 
-                  // It is a "regular" non-zero number.
+                // It is a "regular" non-zero number.
                     
-                  // Get the bare (but still biased) float16 exponent.
-                  let exponent = (unsignedf16 >> FLOAT16_SIGNIFICAND_SIZE);
-                  // Get the float16 significand bits.
-                  let significand = unsignedf16;
-                  if (exponent == 0) {
-                      // Subnormal float16 - In float64 that must translate to normalized.
-                      exponent++;
-                      do {
-                          exponent--;
-                          significand <<= 1;
-                          // Continue until the implicit "1" is in the proper position.
-                      } while ((significand & (1 << FLOAT16_SIGNIFICAND_SIZE)) == 0);
-                  }
+                // Get the bare (but still biased) float16 exponent.
+                let exponent = (unsignedf16 >> FLOAT16_SIGNIFICAND_SIZE);
+                // Get the float16 significand bits.
+                let significand = unsignedf16;
+                if (exponent == 0) {
+                    // Subnormal float16 - In float64 that must translate to normalized.
+                    exponent++;
+                    do {
+                        exponent--;
+                        significand <<= 1;
+                        // Continue until the implicit "1" is in the proper position.
+                    } while ((significand & (1 << FLOAT16_SIGNIFICAND_SIZE)) == 0);
+                }
 //                     significand & ((1 << FLOAT16_SIGNIFICAND_SIZE) - 1);
-                  f64Bin = mapValues(exponent + FLOAT64_EXPONENT_BIAS - FLOAT16_EXPONENT_BIAS,
-                                      significand, FLOAT16_SIGNIFICAND_SIZE);
-                  mapVau
-                  unsignedResult = 
-                  // Exponent.  Set the proper bias and put result in front of significand.
-                  ((exponent + (FLOAT64_EXPONENT_BIAS - FLOAT16_EXPONENT_BIAS)) 
-                      << FLOAT64_SIGNIFICAND_SIZE) +
-                  // Significand.  Remove everything above.
-                  (significand & ((1l << FLOAT64_SIGNIFICAND_SIZE) - 1));
-              }
-                return checkDoubleConversion(tag,
-                                              float16, 
-                                              f64Bin,
-                                              // Put sign bit in position.
-                                              ((float16 & FLOAT16_NEG_ZERO) << (64 - 16)));
+                f64Bin = mapValues(exponent + FLOAT64_EXPONENT_BIAS - FLOAT16_EXPONENT_BIAS,
+                                    significand, FLOAT16_SIGNIFICAND_SIZE);
+                mapVau
+                unsignedResult = 
+                // Exponent.  Set the proper bias and put result in front of significand.
+                ((exponent + (FLOAT64_EXPONENT_BIAS - FLOAT16_EXPONENT_BIAS)) 
+                    << FLOAT64_SIGNIFICAND_SIZE) +
+                // Significand.  Remove everything above.
+                (significand & ((1l << FLOAT64_SIGNIFICAND_SIZE) - 1));
+            }
+              return checkDoubleConversion(tag,
+                                            float16, 
+                                            f64Bin,
+                                            // Put sign bit in position.
+                                            ((float16 & FLOAT16_NEG_ZERO) << (64 - 16)));
 
-            case CBOR.#MT_FLOAT32:
-                long float32 = getLongFromBytes(4);
-                return checkDoubleConversion(tag, 
+        case CBOR.#MT_FLOAT32:
+              long float32 = getLongFromBytes(4);
+              return checkDoubleConversion(tag, 
                                               float32,
                                               Double.doubleToLongBits(
                                                       Float.intBitsToFloat((int)float32)));
@@ -974,7 +975,7 @@ class CBOR {
     return res;
   }
 
-  static #compare = function(entry, testKey) {
+  static #compareEntry = function(entry, testKey) {
     let encodedKey = entry.encodedKey;
     let minIndex = Math.min(encodedKey.length, testKey.length);
     for (let i = 0; i < minIndex; i++) {
