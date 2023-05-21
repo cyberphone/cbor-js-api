@@ -95,8 +95,6 @@ class CBOR {
   static #MT_FLOAT32      = 0xfa;
   static #MT_FLOAT64      = 0xfb;
 
-  static #RANGES = [0xff, 0xffff, 0xffffffff];
-
   static #ESCAPE_CHARACTERS = [
  //   0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
       1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 , 'b', 't', 'n',  1 , 'f', 'r',  1 ,  1 ,
@@ -868,14 +866,16 @@ class CBOR {
       }
       // Then decode CBOR types that blend length of data in the tag byte.
       let n = tag & 0x1f;
-      let bigN = 0n;
+      let bigN = BigInt(n);
       if (n > 27) {
         this.unsupportedTag(tag);
       }
       if (n > 23) {
         // For 1, 2, 4, and 8 byte N.
-        let diff = n - 24;
-        let q = 1 << diff;
+        let q = 1 << (n - 24);
+        let mask = 0xffffffffn << BigInt((q >> 1) * 8);
+        console.log('mask=' + mask.toString(16));
+        bigN = 0n;
         while (--q >= 0) {
           bigN <<= 8n;
           bigN += BigInt(this.readByte());
@@ -884,12 +884,9 @@ class CBOR {
         // If the upper half (for 2, 4, 8 byte N) of N or a single byte
         // N is zero, a shorter variant should have been used.
         // In addition, N must be > 23. 
-        if ((bigN < 24n || (diff > 0 && !(~BigInt(CBOR.#RANGES[diff - 1]) & bigN))) && 
-            this.deterministicMode) {
-          throw Error("Non-deterministic N encoding tag: 0x" + CBOR.#twoHex(tag));
+        if ((bigN < 24n || !(mask & bigN)) && this.deterministicMode) {
+          throw Error("Non-deterministic N encoding for tag: 0x" + CBOR.#twoHex(tag));
         }
-      } else {
-        bigN = BigInt(n);
       }
             console.log("N=" + bigN + " " + (typeof BigN == 'bigint'));
             console.log(bigN);
@@ -970,10 +967,12 @@ class CBOR {
     if (n > 23) {
       modifier = 24;
       length = 1;
-      let q = 0;
-      while (q < 3 && n > CBOR.#RANGES[q++]) {
+      let mask = 0x100;
+      while (length < 8 && n >= mask) {
         modifier++;
         length <<= 1;
+        // The last multiplication will not be an integer but "length < 8" handles this.
+        mask *= mask;
       }
     }
     let encoded = new Uint8Array(length + 1);
