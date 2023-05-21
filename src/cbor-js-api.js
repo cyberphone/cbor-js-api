@@ -722,6 +722,9 @@ class CBOR {
     }
   }
 
+///////////////////////////
+//     Decoder Core      //
+///////////////////////////
 
   static #_decoder = class {
 
@@ -729,9 +732,8 @@ class CBOR {
                 sequenceFlag,
                 acceptNonDeterministic,
                 constrainedMapKeys) {
-      this.cbor = cbor;
+      this.cbor = CBOR.#bytesCheck(cbor);
       this.counter = 0;
-      this.atFirstByte = true;
       this.sequenceFlag = sequenceFlag;
       this.deterministicMode = !acceptNonDeterministic;
       this.constrainedMapKeys = constrainedMapKeys;
@@ -939,10 +941,10 @@ class CBOR {
     
         case CBOR.#MT_MAP:
           let cborMap = new CBOR.Map();
-          cborMap.deterministicMode = deterministicMode;
-          cborMap.constrainedKeys = constrainedMapKeys;
+          cborMap.deterministicMode = this.deterministicMode;
+          cborMap.constrainedKeys = this.constrainedMapKeys;
           for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
-            cborMap.set(getObject(), getObject());
+            cborMap.set(this.getObject(), this.getObject());
           }
           // Programmatically added elements sort automatically. 
           cborMap.deterministicMode = false;
@@ -954,18 +956,51 @@ class CBOR {
     }
   }
 
+  static #getObject = function(decoder) {
+    decoder.atFirstByte = true;
+    let object = decoder.getObject();
+    if (decoder.sequenceFlag) {
+      if (decoder.atFirstByte) {
+        return null;
+      }
+    } else if (decoder.counter < decoder.cbor.length) {
+      throw Error("Unexpected data encountered after CBOR object");
+    }
+    return object;
+  }
+
 ///////////////////////////
 //     CBOR.decode()     //
 ///////////////////////////
 
   static decode = function(cbor) {
-    let decoder = new CBOR.#_decoder(CBOR.#bytesCheck(cbor), false, false, false);
-    return decoder.getObject();
+    let decoder = new CBOR.#_decoder(cbor, false, false, false);
+    return CBOR.#getObject(decoder);
   }
 
 ///////////////////////////
-//    Support Methods    //
+//  CBOR.initExtended()  //
 ///////////////////////////
+
+  static initExtended = function(cbor, sequenceFlag, acceptNonDeterministic, constrainedMapKeys) {
+    return new CBOR.#_decoder(cbor, 
+                              sequenceFlag,
+                              acceptNonDeterministic, 
+                              constrainedMapKeys);
+  }
+
+///////////////////////////
+// CBOR.decodeExtended() //
+///////////////////////////
+
+  static decodeExtended = function(decoder) {
+    return CBOR.#getObject(decoder);
+  }
+
+
+//=======================//
+//    Support Methods    //
+//=======================//
 
   static #encodeTagAndN = function(majorType, n) {
     let modifier = n;
