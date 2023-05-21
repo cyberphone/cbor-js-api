@@ -1,10 +1,10 @@
 # CBOR JavaScript API
 
 This repository holds a JavaScript API _in development_.  The API
-loosely mimics the "JSON" object by only exposing a single global object,
+loosely mimics the "JSON" object by _exposing a single global object_,
 unsurprisingly named "CBOR".
 
-<table align='center'><tr><td><i>Note that this API is not ready for external use!</i></td></tr></table>
+<table align='center'><tr><td><i>Note that this API is not ready for external use!</i> 😏</td></tr></table>
 
 ### CBOR Components
 - Encoder
@@ -37,9 +37,9 @@ Value=45.7
 
 ### Deterministic Encoding Rules
 
-This API implements deterministic encoding based on section 4.2 of [RFC8949](https://www.rfc-editor.org/rfc/rfc8949.html).
+The JavaScript API implements deterministic encoding based on section 4.2 of [RFC8949](https://www.rfc-editor.org/rfc/rfc8949.html).
 For maximum interoperability, the API also depends on Rule&nbsp;2 of section 4.2.2, as well as interpreting Appendix&nbsp;A as
-_bidirectional_.  For a more thorough description and rationale turn to: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#deterministic-encoding.
+_bidirectional_.  For a more thorough description and rationale, turn to: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#deterministic-encoding.
 
 ### Diagnostic Notation Support
 
