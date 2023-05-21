@@ -23,14 +23,14 @@ let cbor = new CBOR.Map()
 
 ```javascript
 let map = CBOR.decode(cbor);
-console.log(map.toString());
+console.log(map.toString());  // Diagnostic notation
 ----------------------------------------------------
 {
   1: 45.7,
   2: "Hi there!"
 }
 
-console.log('Value=' + map.get(new CBOR.Int(1)).toString());
+console.log('Value=' + map.get(new CBOR.Int(1)));
 ----------------------------------------------------
 Value=45.7
 ```
