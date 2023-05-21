@@ -48,5 +48,7 @@ _documentation_, and _debugging_.  Diagnostic notation is an intrinsic part of t
 However, diagnostic notation can also be used as input for _testing_ and
 _configuration_ purposes.  A preliminary description can be found here: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#diagnostic-notation.
 
-In the API, diagnostic notation as input is tentatively supported by
-the `CBOR.diagnosticNotation(`_text_`)` method.
+In the JavaScript API, diagnostic notation as input is tentatively supported by calling
+the `CBOR.diagnosticNotation(`_string_`)` method.
+
+Note: the intention with diagnostic notation is not using it as a "wire" format.
