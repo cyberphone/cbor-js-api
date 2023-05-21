@@ -44,9 +44,9 @@ _bidirectional_.  For a more thorough description and rationale turn to: https:/
 ### Diagnostic Notation Support
 
 Diagnostic notation permits displaying CBOR data as human-readable text.  This is practical for _logging_,
-_documentation_, and _debugging_.  Diagnostic notation is an intrinsic part of the API through the `toString()` method.
-However, diagnostic notation can also be used as input for _testing_ and
-_configuration_ purposes.  A preliminary description can be found here: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#diagnostic-notation.
+_documentation_, and _debugging_ purposes.  Diagnostic notation is an intrinsic part of the API through the `toString()` method.
+However, diagnostic notation can also be used as input for creating _test data_ and for
+_configuration files_.  A preliminary description can be found here: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#diagnostic-notation.
 
 In the JavaScript API, diagnostic notation as input is tentatively supported by calling
 the `CBOR.diagnosticNotation(`_string_`)` method.
