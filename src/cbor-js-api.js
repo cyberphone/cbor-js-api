@@ -114,17 +114,17 @@ class CBOR {
  
   static Int = class extends CBOR.#CBORObject {
 
-    #number;
+    #value;
 
     // Note that for integers with a magnitude above 2^53 - 1, "BigInt" must be used. 
-    constructor(number) {
+    constructor(value) {
       super();
-      this.#number = CBOR.#intCheck(number);
+      this.#value = CBOR.#intCheck(value);
     }
     
     encode = function() {
       let tag;
-      let n = this.#number;
+      let n = this.#value;
       if (n < 0) {
         tag = CBOR.#MT_NEGATIVE;
         n = -n - 1;
@@ -135,11 +135,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#number.toString();
+      return this.#value.toString();
     }
 
     _get = function() {
-      return this.#number;
+      return this.#value;
     }
   }
 
@@ -149,25 +149,25 @@ class CBOR {
  
   static BigInt = class extends CBOR.#CBORObject {
 
-    #number;
+    #value;
 
-    constructor(number) {
+    constructor(value) {
       super();
-      this.#number = CBOR.#typeCheck(number, 'bigint');
+      this.#value = CBOR.#typeCheck(value, 'bigint');
     }
     
     encode = function() {
       let tag;
-      let number = this.#number
-      if (number < 0) {
+      let value = this.#value
+      if (value < 0) {
         tag = CBOR.#MT_NEGATIVE;
-        number = ~number;
+        value = ~value;
       } else {
         tag = CBOR.#MT_UNSIGNED;
       }
       // Convert BigInt to Uint8Array (but with a twist).
       let array = [];
-      let temp = BigInt(number);
+      let temp = BigInt(value);
       do {
         array.push(Number(temp & 255n));
         temp >>= 8n;
@@ -198,11 +198,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#number.toString();
+      return this.#value.toString();
     }
  
     _get = function() {
-      return this.#number;
+      return this.#value;
     }
   }
 
@@ -213,34 +213,34 @@ class CBOR {
  
   static Float = class extends CBOR.#CBORObject {
 
-    #number;
+    #value;
     #encoded;
     #tag;
 
-    constructor(number) {
+    constructor(value) {
       super();
-      this.#number = CBOR.#typeCheck(number, 'number');
+      this.#value = CBOR.#typeCheck(value, 'number');
       // Begin catching the F16 edge cases.
       this.#tag = CBOR.#MT_FLOAT16;
-      if (Number.isNaN(number)) {
+      if (Number.isNaN(value)) {
         this.#encoded = CBOR.#int16ToByteArray(0x7e00);
-      } else if (!Number.isFinite(number)) {
-        this.#encoded = CBOR.#int16ToByteArray(number < 0 ? 0xfc00 : 0x7c00);
-      } else if (Math.abs(number) == 0) {
-        this.#encoded = CBOR.#int16ToByteArray(Object.is(number,-0) ? 0x8000 : 0x0000);
+      } else if (!Number.isFinite(value)) {
+        this.#encoded = CBOR.#int16ToByteArray(value < 0 ? 0xfc00 : 0x7c00);
+      } else if (Math.abs(value) == 0) {
+        this.#encoded = CBOR.#int16ToByteArray(Object.is(value,-0) ? 0x8000 : 0x0000);
       } else {
         // It is apparently a genuine number.
         // The following code depends on that Math.fround works as expected.
-        let f32 = Math.fround(number);
+        let f32 = Math.fround(value);
         let u8;
         let f32exp;
         let f32signif;
         while (true) {  // "goto" surely beats quirky loop/break/return/flag constructs...
-          if (f32 == number) {
+          if (f32 == value) {
             // Nothing was lost during the conversion, F32 or F16 is on the menu.
             this.#tag = CBOR.#MT_FLOAT32;
             // However, JavaScript always defer to F64 for "Number".
-            u8 = CBOR.#f64ToByteArray(number);
+            u8 = CBOR.#f64ToByteArray(value);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
 // FOR REMOVAL
             if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
@@ -313,7 +313,7 @@ class CBOR {
             // Converting to F32 returned a truncated result.
             // Full 64-bit representation is required.
             this.#tag = CBOR.#MT_FLOAT64;
-            this.#encoded = CBOR.#f64ToByteArray(number);
+            this.#encoded = CBOR.#f64ToByteArray(value);
           }
           // Common F16 and F64 return point.
           return;
@@ -336,11 +336,11 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#number.toString();
+      return this.#value.toString();
     }
 
     _get = function() {
-      return this.#number;
+      return this.#value;
     }
   }
 
@@ -463,8 +463,8 @@ class CBOR {
 
     #array = [];
 
-    add = function(object) {
-      this.#array.push(CBOR.#cborArguentCheck(object));
+    add = function(element) {
+      this.#array.push(CBOR.#cborArguentCheck(element));
       return this;
     }
 
@@ -525,10 +525,10 @@ class CBOR {
 
     static #Entry = class {
 
-       constructor(key, object) {
+       constructor(key, value) {
          this.key = key;
          this.encodedKey = key.encode();
-         this.object = object;
+         this.value = value;
          this.next = null;
        }
 
@@ -537,8 +537,8 @@ class CBOR {
        }
     }
 
-    set = function(key, object) {
-      let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(object));
+    set = function(key, value) {
+      let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(value));
       if (this.#root) {
         // Second key etc.
         if (this.#deterministicMode) {
@@ -612,14 +612,14 @@ class CBOR {
     }
 
     get = function(key) {
-      return this.#lookup(key, true).object;
+      return this.#lookup(key, true).value;
     }
 
     getConditionally = function(key, defaultValue) {
       let entry = this.#lookup(key, false);
       // Note: defaultValue my be 'null'
       defaultValue = defaultValue ? CBOR.#cborArguentCheck(defaultValue) : null;
-      return entry ? entry.object : defaultValue;
+      return entry ? entry.value : defaultValue;
     }
 
     getKeys = function() {
@@ -643,7 +643,7 @@ class CBOR {
             precedingEntry.next = entry.next;
           }
           this.#numberOfEntries--;
-          return entry.object;
+          return entry.value;
         }
         precedingEntry = entry;
       }
@@ -663,7 +663,7 @@ class CBOR {
       let encoded = CBOR.#encodeTagAndN(CBOR.#MT_MAP, this.#numberOfEntries);
       for (let entry = this.#root; entry; entry = entry.next) {
         encoded = CBOR.#addArrays(encoded, 
-                                  CBOR.#addArrays(entry.key.encode(), entry.object.encode()));
+                                  CBOR.#addArrays(entry.key.encode(), entry.value.encode()));
       }
       return encoded;
     }
@@ -680,7 +680,7 @@ class CBOR {
         }
         notFirst = true;
         buffer += cborPrinter.newlineAndIndent();
-        buffer += entry.key.toString(cborPrinter) + ': ' + entry.object.toString(cborPrinter);
+        buffer += entry.key.toString(cborPrinter) + ': ' + entry.value.toString(cborPrinter);
       }
       return buffer + cborPrinter.endMap(notFirst);
     }
@@ -773,11 +773,11 @@ class CBOR {
       throw Error("Unsupported tag: " + CBOR.#twoHex(tag));
     }
 
-    rangeLimitedBigInt = function(number) {
-      if (number > 0xffffffffn) {
+    rangeLimitedBigInt = function(value) {
+      if (value > 0xffffffffn) {
         throw Error("Length limited to 0xffffffff");
       }
-      return Number(number);
+      return Number(value);
     }
 
     getObject = function() {
@@ -793,15 +793,15 @@ class CBOR {
               this.deterministicMode) {
             throw Error("Non-deterministic big integer encoding");
           }
-          let number = 0n;
+          let value = 0n;
           byteArray.forEach(byte => {
-            number <<= 8n;
-            number += BigInt(byte);
+            value <<= 8n;
+            value += BigInt(byte);
           });
           if (tag == CBOR.#MT_BIG_NEGATIVE) {
-            number = ~number;
+            value = ~value;
           }
-          return new CBOR.BigInt(number);
+          return new CBOR.BigInt(value);
 /*
         case CBOR.#MT_FLOAT16:
           this.floatConversion(0);
@@ -930,12 +930,13 @@ class CBOR {
           return new CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(bigN)));
     
         case CBOR.#MT_STRING:
-          return new CBOR.String(UTF8.decode(this.readBytes(this.rangeLimitedBigInt(bigN))));
+          return new CBOR.String(new TextDecoder().decode(
+                                     this.readBytes(this.rangeLimitedBigInt(bigN))));
     
         case CBOR.#MT_ARRAY:
           let cborArray = new CBOR.Array();
           for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
-            cborArray.add(getObject());
+            cborArray.add(this.getObject());
           }
           return cborArray;
     
@@ -1008,12 +1009,12 @@ class CBOR {
     if (n > 23) {
       modifier = 24;
       length = 1;
-      let mask = 0x100;
-      while (length < 8 && n >= mask) {
+      let nextRange = 0x100;
+      while (length < 8 && n >= nextRange) {
         modifier++;
         length <<= 1;
         // The last multiplication will not be an integer but "length < 8" handles this.
-        mask *= mask;
+        nextRange *= nextRange;
       }
     }
     let encoded = new Uint8Array(length + 1);
@@ -1062,13 +1063,13 @@ class CBOR {
     return object;
   }
 
-  static #intCheck = function(number) {
-    CBOR.#typeCheck(number, 'number');
-    if (!Number.isSafeInteger(number)) {
-      throw Error(Number.isInteger(number) ?
+  static #intCheck = function(value) {
+    CBOR.#typeCheck(value, 'number');
+    if (!Number.isSafeInteger(value)) {
+      throw Error(Number.isInteger(value) ?
         "Argument is outside of Number.MAX_SAFE_INTEGER" : "Argument is not an integer");
     }
-    return number;
+    return value;
   }
 
   static #Printer = class {
@@ -1097,9 +1098,9 @@ class CBOR {
     return new Uint8Array([int16 / 256, int16 % 256]);
   }
 
-  static #f64ToByteArray = function(number) {
+  static #f64ToByteArray = function(value) {
     const buffer = new ArrayBuffer(8);
-    new DataView(buffer).setFloat64(0, number, false);
+    new DataView(buffer).setFloat64(0, value, false);
     return [].slice.call(new Uint8Array(buffer))
   }
 
