@@ -223,11 +223,11 @@ class CBOR {
       // Begin catching the F16 edge cases.
       this.#tag = CBOR.#MT_FLOAT16;
       if (Number.isNaN(number)) {
-        this.#encoded = CBOR.#f16Encoding(0x7e00);
+        this.#encoded = CBOR.#int16ToByteArray(0x7e00);
       } else if (!Number.isFinite(number)) {
-        this.#encoded = CBOR.#f16Encoding(number < 0 ? 0xfc00 : 0x7c00);
+        this.#encoded = CBOR.#int16ToByteArray(number < 0 ? 0xfc00 : 0x7c00);
       } else if (Math.abs(number) == 0) {
-        this.#encoded = CBOR.#f16Encoding(Object.is(number,-0) ? 0x8000 : 0x0000);
+        this.#encoded = CBOR.#int16ToByteArray(Object.is(number,-0) ? 0x8000 : 0x0000);
       } else {
         // It is apparently a genuine number.
         // The following code depends on that Math.fround works as expected.
@@ -240,7 +240,7 @@ class CBOR {
             // Nothing was lost during the conversion, F32 or F16 is on the menu.
             this.#tag = CBOR.#MT_FLOAT32;
             // However, JavaScript always defer to F64 for "Number".
-            u8 = CBOR.#f64Encoding(number);
+            u8 = CBOR.#f64ToByteArray(number);
             f32exp = ((u8[0] & 0x7f) << 4) + ((u8[1] & 0xf0) >> 4) - 1023 + 127;
 // FOR REMOVAL
             if (u8[4] & 0x1f || u8[5] || u8[6] || u8[7]) {
@@ -308,12 +308,12 @@ class CBOR {
                 (f16exp << 10) +
                 // Significand.
                 f16signif;
-                this.#encoded = CBOR.#f16Encoding(f16bin);
+                this.#encoded = CBOR.#int16ToByteArray(f16bin);
           } else {
             // Converting to F32 returned a truncated result.
             // Full 64-bit representation is required.
             this.#tag = CBOR.#MT_FLOAT64;
-            this.#encoded = CBOR.#f64Encoding(number);
+            this.#encoded = CBOR.#f64ToByteArray(number);
           }
           // Common F16 and F64 return point.
           return;
@@ -322,12 +322,12 @@ class CBOR {
         let f32bin = 
             // Put sign bit in position. Why not << 24?  JS shift doesn't work above 2^31...
             ((u8[0] & 0x80) * 0x1000000) +
-            // Exponent.  Put it in front of significand.
-            (f32exp << 23) +
+            // Exponent.  Put it in front of significand (<< 23).
+            (f32exp * 0x800000) +
             // Significand.
             f32signif;
-            this.#encoded = CBOR.#addArrays(CBOR.#f16Encoding(f32bin / 0x10000), 
-                                            CBOR.#f16Encoding(f32bin & 0xffff));
+            this.#encoded = CBOR.#addArrays(CBOR.#int16ToByteArray(f32bin / 0x10000), 
+                                            CBOR.#int16ToByteArray(f32bin % 0x10000));
       }
     }
     
@@ -520,6 +520,7 @@ class CBOR {
 
     #root;
     #lastEntry;
+    #numberOfEntries = 0;
     #deterministicMode = false;
 
     static #Entry = class {
@@ -585,6 +586,7 @@ class CBOR {
         this.#root = newEntry;
       }
       this.#lastEntry = newEntry;
+      this.#numberOfEntries++;
       return this;
     }
 
@@ -640,6 +642,7 @@ class CBOR {
             // Remove key somewhere above root.
             precedingEntry.next = entry.next;
           }
+          this.#numberOfEntries--;
           return entry.object;
         }
         precedingEntry = entry;
@@ -647,19 +650,22 @@ class CBOR {
       this.#missingKey(key);
     }
 
+    size = function() {
+      return this.#numberOfEntries;
+    }
+
     containsKey = function(key) {
       return this.#lookup(key, false) != null;
     }
 
     encode = function() {
-      let q = 0;
-      let encoded = new Uint8Array();
+    console.log("nr=" + this.#numberOfEntries);
+      let encoded = CBOR.#encodeTagAndN(CBOR.#MT_MAP, this.#numberOfEntries);
       for (let entry = this.#root; entry; entry = entry.next) {
-        q++;
         encoded = CBOR.#addArrays(encoded, 
-                      CBOR.#addArrays(entry.key.encode(), entry.object.encode()));
+                                  CBOR.#addArrays(entry.key.encode(), entry.object.encode()));
       }
-      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_MAP, q), encoded);
+      return encoded;
     }
 
     toString = function(cborPrinter) {
@@ -1052,11 +1058,11 @@ class CBOR {
     }
   }
   
-  static #f16Encoding = function(int16) {
+  static #int16ToByteArray = function(int16) {
     return new Uint8Array([int16 / 256, int16 % 256]);
   }
 
-  static #f64Encoding = function(number) {
+  static #f64ToByteArray = function(number) {
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setFloat64(0, number, false);
     return [].slice.call(new Uint8Array(buffer))
