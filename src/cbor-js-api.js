@@ -66,7 +66,7 @@ class CBOR {
 
     equals = function(object) {
       if (object && object instanceof CBOR.#CBORObject) {
-        return CBOR.#compare(this.encode(), object.encode()) == 0;
+        return CBOR.compareArrays(this.encode(), object.encode()) == 0;
       }
       return false;
     }
@@ -198,12 +198,12 @@ class CBOR {
         while (length >>= 1) {
            modifier++;
         }
-        return CBOR.#addArrays(new Uint8Array([tag | modifier]), byteArray);
+        return CBOR.addArrays(new Uint8Array([tag | modifier]), byteArray);
       }
       // True "BigInt".
-      return CBOR.#addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
-                                                CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
-                                            new CBOR.Bytes(byteArray).encode());
+      return CBOR.addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
+                                               CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
+                                           new CBOR.Bytes(byteArray).encode());
     }
 
     toString = function() {
@@ -335,13 +335,13 @@ class CBOR {
             (f32exp * 0x800000) +
             // Significand.
             f32signif;
-            this.#encoded = CBOR.#addArrays(CBOR.#int16ToByteArray(f32bin / 0x10000), 
+            this.#encoded = CBOR.addArrays(CBOR.#int16ToByteArray(f32bin / 0x10000), 
                                             CBOR.#int16ToByteArray(f32bin % 0x10000));
       }
     }
     
     encode = function() {
-      return CBOR.#addArrays(new Uint8Array([this.#tag]), this.#encoded);
+      return CBOR.addArrays(new Uint8Array([this.#tag]), this.#encoded);
     }
 
     toString = function() {
@@ -368,7 +368,7 @@ class CBOR {
     
     encode = function() {
       let utf8 = new TextEncoder().encode(this.#string);
-      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_STRING, utf8.length), utf8);
+      return CBOR.addArrays(CBOR.#encodeTagAndN(CBOR.#MT_STRING, utf8.length), utf8);
     }
 
     toString = function() {
@@ -415,7 +415,7 @@ class CBOR {
     }
     
     encode = function() {
-      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_BYTES, this.#bytes.length), this.#bytes);
+      return CBOR.addArrays(CBOR.#encodeTagAndN(CBOR.#MT_BYTES, this.#bytes.length), this.#bytes);
     }
 
     toString = function() {
@@ -498,7 +498,7 @@ class CBOR {
     encode = function() {
       let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#array.length);
       this.#array.forEach(object => {
-        encoded = CBOR.#addArrays(encoded, object.encode());
+        encoded = CBOR.addArrays(encoded, object.encode());
       });
       return encoded;
     }
@@ -534,7 +534,7 @@ class CBOR {
     #root;
     #lastEntry;
     #numberOfEntries = 0;
-    _constrainedKeyOption = false;
+    _constrainedKeys = false;
     _deterministicMode = false;
 
     static #Entry = class {
@@ -547,18 +547,18 @@ class CBOR {
        }
 
        compare = function(encodedKey) {
-         return CBOR.#compare(this.encodedKey, encodedKey);
+         return CBOR.compareArrays(this.encodedKey, encodedKey);
        }
     }
 
     set = function(key, value) {
       let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(value));
-      if (this._constrainedKeyOption && key.constrainedKeyType()) {
+      if (this._constrainedKeys && key.constrainedKeyType()) {
         throw Error("Constrained key option disallows: " + key.constructor.name);
       }
       if (this.#root) {
         // Second key etc.
-        if (this._constrainedKeyOption &&
+        if (this._constrainedKeys &&
             this.#lastEntry.key.constructor.name != key.constructor.name) {
           throw Error("Constrained key option disallows mixing types: " + key.constructor.name);
         }
@@ -683,8 +683,8 @@ class CBOR {
     console.log("nr=" + this.#numberOfEntries);
       let encoded = CBOR.#encodeTagAndN(CBOR.#MT_MAP, this.#numberOfEntries);
       for (let entry = this.#root; entry; entry = entry.next) {
-        encoded = CBOR.#addArrays(encoded, 
-                                  CBOR.#addArrays(entry.key.encode(), entry.value.encode()));
+        encoded = CBOR.addArrays(encoded, 
+                                 CBOR.addArrays(entry.key.encode(), entry.value.encode()));
       }
       return encoded;
     }
@@ -730,7 +730,7 @@ class CBOR {
     }
 
     encode = function() {
-      return CBOR.#addArrays(CBOR.#encodeTagAndN(CBOR.#MT_TAG, this.#tagNumber),
+      return CBOR.addArrays(CBOR.#encodeTagAndN(CBOR.#MT_TAG, this.#tagNumber),
                              this.#object.encode());
     }
 
@@ -951,7 +951,7 @@ class CBOR {
           return new CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(bigN)));
     
         case CBOR.#MT_STRING:
-          return new CBOR.String(new TextDecoder().decode(
+          return new CBOR.String(new TextDecoder('utf-8', {fatal: true}).decode(
                                      this.readBytes(this.rangeLimitedBigInt(bigN))));
     
         case CBOR.#MT_ARRAY:
@@ -964,7 +964,7 @@ class CBOR {
         case CBOR.#MT_MAP:
           let cborMap = new CBOR.Map();
           cborMap._deterministicMode = this.deterministicMode;
-          cborMap._constrainedKeyOption = this.constrainedKeys;
+          cborMap._constrainedKeys = this.constrainedKeys;
           for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
             cborMap.set(this.getObject(), this.getObject());
           }
@@ -1019,10 +1019,9 @@ class CBOR {
     return CBOR.#getObject(decoder);
   }
 
-
-//=======================//
-//    Support Methods    //
-//=======================//
+//================================//
+//    Internal Support Methods    //
+//================================//
 
   static #encodeTagAndN = function(majorType, n) {
     let modifier = n;
@@ -1045,29 +1044,6 @@ class CBOR {
       n /= 256;
     }
     return encoded;
-  }
-
-  static #addArrays = function(a, b) {
-  let result = new Uint8Array(a.length + b.length);
-    let q = 0;
-    while (q < a.length) {
-      result[q] = a[q++];
-    }
-    for (let i = 0; i < b.length; i++) {
-      result[q + i] = b[i];
-    }
-    return result;
-  }
-
-  static #compare = function(a, b) {
-    let minIndex = Math.min(a.length, b.length);
-    for (let i = 0; i < minIndex; i++) {
-      let diff = a[i] - b[i];
-      if (diff != 0) {
-        return diff;
-      }
-    }
-    return a.length - b.length;
   }
 
   static #bytesCheck = function(byteArray) {
@@ -1140,7 +1116,34 @@ class CBOR {
     throw Error(object ? "Argument is not a CBOR object: " + object.constructor.name : "'null'");
   }
 
-  static toHex = function (byteArray) {
+//================================//
+//     Public Support Methods     //
+//================================//
+
+  static addArrays = function(a, b) {
+  let result = new Uint8Array(a.length + b.length);
+    let q = 0;
+    while (q < a.length) {
+      result[q] = a[q++];
+    }
+    for (let i = 0; i < b.length; i++) {
+      result[q + i] = b[i];
+    }
+    return result;
+  }
+
+  static compareArrays = function(a, b) {
+    let minIndex = Math.min(a.length, b.length);
+    for (let i = 0; i < minIndex; i++) {
+      let diff = a[i] - b[i];
+      if (diff != 0) {
+        return diff;
+      }
+    }
+    return a.length - b.length;
+  }
+  
+static toHex = function (byteArray) {
     let result = '';
     for (let i = 0; i < byteArray.length; i++) {
       result += CBOR.#twoHex(byteArray[i]);
