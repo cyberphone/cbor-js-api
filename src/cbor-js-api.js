@@ -1170,6 +1170,11 @@ class CBOR {
     return result;
   }
 
+  static toBase64Url = function(byteArray) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(byteArray)))
+               .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
   static fromBase64Url = function(base64) {
     if (!base64.includes('=')) {
       base64 = base64 +  '===='.substring(0, (4 - (base64.length % 4)) % 4);
