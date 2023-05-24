@@ -731,7 +731,7 @@ class CBOR {
 
     encode = function() {
       return CBOR.addArrays(CBOR.#encodeTagAndN(CBOR.#MT_TAG, this.#tagNumber),
-                             this.#object.encode());
+                            this.#object.encode());
     }
 
     toString = function(cborPrinter) {
@@ -803,7 +803,6 @@ class CBOR {
 
     getObject = function() {
       let tag = this.readByte();
-      console.log("Get: "+ tag);          
 
       // Begin with CBOR types that are uniquely defined by the tag byte.
       switch (tag) {
@@ -1101,8 +1100,8 @@ class CBOR {
     return [].slice.call(new Uint8Array(buffer))
   }
 
-  static #oneHex = function (digit) {
-    return String.fromCharCode(digit < 10 ? (48 + digit) : (87 + digit));
+  static #oneHex = function(digit) {
+    return String.fromCharCode(digit < 10 ? (0x30 + digit) : (0x57 + digit));
   }
 
   static #twoHex = function(byte) {
@@ -1114,6 +1113,13 @@ class CBOR {
       return object;
     }
     throw Error(object ? "Argument is not a CBOR object: " + object.constructor.name : "'null'");
+  }
+
+  static #decodeOneHex(charCode) {
+    if (charCode >= 0x30 && charCode <= 0x39) return charCode - 0x30;
+    if (charCode >= 0x61 && charCode <= 0x66) return charCode - 0x57;
+    if (charCode >= 0x41 && charCode <= 0x46) return charCode - 0x37;
+    throw Error("Bad hex character: " + String.fromCharCode(charCode));
   }
 
 //================================//
@@ -1143,13 +1149,35 @@ class CBOR {
     return a.length - b.length;
   }
   
-static toHex = function (byteArray) {
+  static toHex = function (byteArray) {
     let result = '';
     for (let i = 0; i < byteArray.length; i++) {
       result += CBOR.#twoHex(byteArray[i]);
     }
     return result;
   }
+
+  static fromHex = function (hexString) {
+    let length = hexString.length;
+    if (length & 1) {
+      throw Error("Uneven number of characters in hex string");
+    }
+    let result = new Uint8Array(length >> 1);
+    for (let q = 0; q < length; q += 2) {
+      result[q >> 1] = (CBOR.#decodeOneHex(hexString.charCodeAt(q)) << 4) +
+                        CBOR.#decodeOneHex(hexString.charCodeAt(q + 1));
+    }
+    return result;
+  }
+
+  static fromBase64Url = function(base64) {
+    if (!base64.includes('=')) {
+      base64 = base64 +  '===='.substring(0, (4 - (base64.length % 4)) % 4);
+    }
+    return Uint8Array.from(atob(base64.replace(/-/g, '+').replace(/_/g, '/')),
+                           c => c.charCodeAt(0));
+  }
+
 }
 
 module.exports = CBOR;
