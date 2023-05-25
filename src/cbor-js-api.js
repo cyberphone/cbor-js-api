@@ -71,6 +71,10 @@ class CBOR {
       return false;
     }
 
+    clone = function() {
+      return CBOR.decode(this.encode());
+    }
+
     // Overridden by CBOR.Int and CBOR.String
     constrainedKeyType = function() {
       return true;
