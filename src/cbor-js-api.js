@@ -82,7 +82,7 @@ class CBOR {
  
     #checkTypeAndGetValue = function(className) {
       if (!(this instanceof className)) {
-        throw Error("Invalid object for this method: CBOR." + this.constructor.name);
+        throw Error("Invalid method call for object: CBOR." + this.constructor.name);
       }
       return this._get();
     }
