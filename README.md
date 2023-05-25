@@ -4,7 +4,7 @@ This repository holds a JavaScript API _in development_.  The API
 loosely mimics the "JSON" object by _exposing a single global object_,
 unsurprisingly named "CBOR".
 
-<table align='center'><tr><td><i>Note that this API is not ready for external use!</i> 😏</td></tr></table>
+<table align='center'><tr><td><i>Note that this API is not (at all) ready for external use!</i> 😏</td></tr></table>
 
 ### CBOR Components
 - Encoder
@@ -14,9 +14,14 @@ unsurprisingly named "CBOR".
 ### Encoding Example
 
 ```javascript
-let cbor = new CBOR.Map()
-               .set(new CBOR.Int(1), new CBOR.Float(45.7))
-               .set(new CBOR.Int(2), new CBOR.String("Hi there!")).encode();
+let cbor = CBOR.Map()
+               .set(CBOR.Int(1), CBOR.Float(45.7))
+               .set(CBOR.Int(2), CBOR.String("Hi there!")).encode();
+
+
+console.log(CBOR.toHex(cbor));
+------------------------------
+a201fb4046d9999999999a0269486920746865726521
 ```
 
 ### Decoding Example
@@ -30,8 +35,8 @@ console.log(map.toString());  // Diagnostic notation
   2: "Hi there!"
 }
 
-console.log('Value=' + map.get(new CBOR.Int(1)));
-----------------------------------------------------
+console.log('Value=' + map.get(CBOR.Int(1)));
+---------------------------------------------
 Value=45.7
 ```
 
@@ -52,3 +57,6 @@ In the JavaScript API, diagnostic notation as input is tentatively supported by 
 the `CBOR.diagnosticNotation(`_string_`)` method.
 
 Note: the intention with diagnostic notation is not using it as a "wire" format.
+
+Updated: 2023-05-25
+

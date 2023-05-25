@@ -207,7 +207,7 @@ class CBOR {
       // True "BigInt".
       return CBOR.addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
                                                CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
-                                           new CBOR.Bytes(byteArray).encode());
+                                           CBOR.Bytes(byteArray).encode());
     }
 
     toString = function() {
@@ -541,7 +541,7 @@ class CBOR {
     _constrainedKeys = false;
     _deterministicMode = false;
 
-    static #Entry = class {
+    static Entry = class {
 
        constructor(key, value) {
          this.key = key;
@@ -556,7 +556,7 @@ class CBOR {
     }
 
     set = function(key, value) {
-      let newEntry = new CBOR.Map.#Entry(this.#getKey(key), CBOR.#cborArguentCheck(value));
+      let newEntry = new CBOR.Map.Entry(this.#getKey(key), CBOR.#cborArguentCheck(value));
       if (this._constrainedKeys && key.constrainedKeyType()) {
         throw Error("Constrained key option disallows: " + key.constructor.name);
       }
@@ -748,6 +748,42 @@ class CBOR {
   }
 
 ///////////////////////////
+//        Proxy          //
+///////////////////////////
+
+  // The Proxy concept enables checks for invocation by "new" and number of arguments.
+  static #handler = class {
+
+    constructor(numberOfArguments) {
+      this.numberOfArguments = numberOfArguments;
+    }
+
+    apply(target, thisArg, argumentsList) {
+      if (argumentsList.length != this.numberOfArguments) {
+        throw Error("CBOR." + target.name + " expects " + 
+        (this.numberOfArguments ? this.numberOfArguments.toString() : "no") + " arguments");
+      }
+      return new target(...argumentsList);
+    }
+
+    construct(target, args) {
+      throw Error("CBOR." + target.name + " does not permit \"new\"");
+    }
+  }
+
+  static Int = new Proxy(CBOR.Int, new CBOR.#handler(1));
+  static BigInt = new Proxy(CBOR.BigInt, new CBOR.#handler(1));
+  static Float = new Proxy(CBOR.Float, new CBOR.#handler(1));
+  static String = new Proxy(CBOR.String, new CBOR.#handler(1));
+  static Bytes = new Proxy(CBOR.Bytes, new CBOR.#handler(1));
+  static Bool = new Proxy(CBOR.Bool, new CBOR.#handler(1));
+  static Null = new Proxy(CBOR.Null, new CBOR.#handler(0));
+  static Array = new Proxy(CBOR.Array, new CBOR.#handler(0));
+  static Map = new Proxy(CBOR.Map, new CBOR.#handler(0));
+  static Tag = new Proxy(CBOR.Tag, new CBOR.#handler(2));
+
+
+///////////////////////////
 //     Decoder Core      //
 ///////////////////////////
 
@@ -825,7 +861,7 @@ class CBOR {
           if (tag == CBOR.#MT_BIG_NEGATIVE) {
             value = ~value;
           }
-          return new CBOR.BigInt(value);
+          return CBOR.BigInt(value);
 /*
         case CBOR.#MT_FLOAT16:
           this.floatConversion(0);
@@ -890,11 +926,11 @@ class CBOR {
                 return checkDoubleConversion(tag, float64, float64);
 */
         case CBOR.#MT_NULL:
-          return new CBOR.Null();
+          return CBOR.Null();
                     
         case CBOR.#MT_TRUE:
         case CBOR.#MT_FALSE:
-          return new CBOR.Bool(tag == CBOR.#MT_TRUE);
+          return CBOR.Bool(tag == CBOR.#MT_TRUE);
       }
       // Then decode CBOR types that blend length of data in the tag byte.
       let n = tag & 0x1f;
@@ -935,37 +971,37 @@ class CBOR {
             }
           }
           */
-          return new CBOR.Tag(bigN, tagData);
+          return CBOR.Tag(bigN, tagData);
 
         case CBOR.#MT_UNSIGNED:
           if (bigN > BigInt(Number.MAX_SAFE_INTEGER)) {
-            return new CBOR.BigInt(bigN);
+            return CBOR.BigInt(bigN);
           }
-          return new CBOR.Int(Number(bigN));
+          return CBOR.Int(Number(bigN));
     
         case CBOR.#MT_NEGATIVE:
           bigN = ~bigN;
           if (bigN < BigInt(-Number.MAX_SAFE_INTEGER)) {
-            return new CBOR.BigInt(bigN);
+            return CBOR.BigInt(bigN);
           }
-          return new CBOR.Int(Number(bigN));
+          return CBOR.Int(Number(bigN));
     
         case CBOR.#MT_BYTES:
-          return new CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(bigN)));
+          return CBOR.Bytes(this.readBytes(this.rangeLimitedBigInt(bigN)));
     
         case CBOR.#MT_STRING:
-          return new CBOR.String(new TextDecoder('utf-8', {fatal: true}).decode(
+          return CBOR.String(new TextDecoder('utf-8', {fatal: true}).decode(
                                      this.readBytes(this.rangeLimitedBigInt(bigN))));
     
         case CBOR.#MT_ARRAY:
-          let cborArray = new CBOR.Array();
+          let cborArray = CBOR.Array();
           for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
             cborArray.add(this.getObject());
           }
           return cborArray;
     
         case CBOR.#MT_MAP:
-          let cborMap = new CBOR.Map();
+          let cborMap = CBOR.Map();
           cborMap._deterministicMode = this.deterministicMode;
           cborMap._constrainedKeys = this.constrainedKeys;
           for (let q = this.rangeLimitedBigInt(bigN); --q >= 0;) {
