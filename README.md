@@ -23,6 +23,7 @@ console.log(CBOR.toHex(cbor));
 ------------------------------
 a201fb4046d9999999999a0269486920746865726521
 ```
+Note: chaining objects as shown above is just an alternative.
 
 ### Decoding Example
 
