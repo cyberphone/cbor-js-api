@@ -125,7 +125,7 @@ class CBOR {
 
     #value;
 
-    // Note that for integers with a magnitude above 2^53 - 1, "BigInt" must be used. 
+    // Integers with a magnitude above 2^53 - 1, must use CBOR.BigInt. 
     constructor(value) {
       super();
       this.#value = CBOR.#intCheck(value);
@@ -164,6 +164,8 @@ class CBOR {
 
     #value;
 
+    // The CBOR.BigInt wrapper object implements the CBOR integer reduction algorithm.  The
+    // JavaScript "BigInt" object is used for maintaining lossless represention of large integers.
     constructor(value) {
       super();
       this.#value = CBOR.#typeCheck(value, 'bigint');
@@ -242,7 +244,7 @@ class CBOR {
       } else if (Math.abs(value) == 0) {
         this.#encoded = CBOR.#int16ToByteArray(Object.is(value,-0) ? 0x8000 : 0x0000);
       } else {
-        // It is apparently a genuine number.
+        // It is apparently a genuine (non-zero) number.
         // The following code depends on that Math.fround works as expected.
         let f32 = Math.fround(value);
         let u8;
@@ -260,7 +262,7 @@ class CBOR {
               throw Error("unexpected fraction: " + f32);
             }
             f32signif = ((u8[1] & 0x0f) << 19) + (u8[2] << 11) + (u8[3] << 3) + (u8[4] >> 5)
-            // Very small F32 values may require subnormal representation.
+            // Very small F32 numbers may require subnormal representation.
             if (f32exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f32signif += 1 << 23;
@@ -289,7 +291,7 @@ class CBOR {
               console.log("@@@ skip above f16exp=" + f16exp);
               break;
             }
-            // Finally, is this number too small for F16?
+            // Finally, is value too small for F16?
             if (f16exp <= 0) {
               // The implicit "1" becomes explicit using subnormal representation.
               f16signif += 1 << 10;
@@ -312,7 +314,7 @@ class CBOR {
 // FOR REMOVAL
               console.log("@@@ succeeded f16 denorm");
             }
-            // A rarity, 16 bits turned out being sufficient for representing number.
+            // A rarity, 16 bits turned out being sufficient for representing value.
             this.#tag = CBOR.#MT_FLOAT16;
             let f16bin = 
                 // Put sign bit in position.
@@ -340,7 +342,7 @@ class CBOR {
             // Significand.
             f32signif;
             this.#encoded = CBOR.addArrays(CBOR.#int16ToByteArray(f32bin / 0x10000), 
-                                            CBOR.#int16ToByteArray(f32bin % 0x10000));
+                                           CBOR.#int16ToByteArray(f32bin % 0x10000));
       }
     }
     
@@ -380,13 +382,13 @@ class CBOR {
       for (let q = 0; q < this.#string.length; q++) {
         let c = this.#string.charCodeAt(q);
         if (c <= 0x5c) {
-          let convertedCharacter;
-          if ((convertedCharacter = CBOR.#ESCAPE_CHARACTERS[c]) != 0) {
+          let escapedCharacter;
+          if (escapedCharacter = CBOR.#ESCAPE_CHARACTERS[c]) {
             buffer += '\\';
-            if (convertedCharacter == 1) {
+            if (escapedCharacter == 1) {
               buffer += 'u00' + CBOR.#twoHex(c);
             } else {
-              buffer += convertedCharacter;
+              buffer += escapedCharacter;
             }
             continue;
           }
@@ -478,30 +480,30 @@ class CBOR {
 
   static Array = class extends CBOR.#CBORObject {
 
-    #array = [];
+    #elements = [];
 
     add = function(element) {
-      this.#array.push(CBOR.#cborArguentCheck(element));
+      this.#elements.push(CBOR.#cborArguentCheck(element));
       return this;
     }
 
     get = function(index) {
       index = CBOR.#intCheck(index);
-      if (index < 0 || index >= this.#array.length) {
+      if (index < 0 || index >= this.#elements.length) {
         throw Error("Array index out of range: " + index);
       }
-      return this.#array[index];
+      return this.#elements[index];
     }
 
     toArray = function() {
       let array = [];
-      this.#array.forEach(element => array.push(element));
+      this.#elements.forEach(element => array.push(element));
       return array;
     }
 
     encode = function() {
-      let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#array.length);
-      this.#array.forEach(object => {
+      let encoded = CBOR.#encodeTagAndN(CBOR.#MT_ARRAY, this.#elements.length);
+      this.#elements.forEach(object => {
         encoded = CBOR.addArrays(encoded, object.encode());
       });
       return encoded;
@@ -510,7 +512,7 @@ class CBOR {
     toString = function(cborPrinter) {
       let buffer = '[';
       let notFirst = false;
-      this.#array.forEach(object => {
+      this.#elements.forEach(object => {
         if (notFirst) {
           buffer += ', ';
         }
@@ -521,7 +523,7 @@ class CBOR {
     }
 
     size = function() {
-      return this.#array.length;
+      return this.#elements.length;
     }
 
     _get = function() {
@@ -570,8 +572,7 @@ class CBOR {
           // Normal case for parsing.
           let diff = this.#lastEntry.compare(newEntry.encodedKey);
           if (diff >= 0) {
-            throw Error((diff == 0 ? 
-              "Duplicate: " : "Non-deterministic order: ") + key.toString());
+            throw Error((diff ? "Non-deterministic order: " : "Duplicate: ") + key);
           }
           this.#lastEntry.next = newEntry;
         } else {

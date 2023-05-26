@@ -2,14 +2,17 @@
 
 This repository holds a JavaScript API _in development_.  The API
 loosely mimics the "JSON" object by _exposing a single global object_,
-unsurprisingly named "CBOR".
+unsurprisingly named "CBOR".  The core is based on wrapping CBOR data items
+in type-specific objects.  These objects are used for encoding CBOR data,
+as well being the result of CBOR decoding.
 
 <table align='center'><tr><td><i>Note that this API is not (at all) ready for external use!</i> 😏</td></tr></table>
 
-### CBOR Components
-- Encoder
+### "CBOR" Components
+- Self-encoding wrapping objects
 - Decoder
 - Diagnostic Notation decoder
+- Utility functions
 
 ### Encoding Example
 
@@ -47,6 +50,9 @@ The JavaScript API implements deterministic encoding based on section 4.2 of [RF
 For maximum interoperability, the API also depends on Rule&nbsp;2 of section 4.2.2, as well as interpreting Appendix&nbsp;A as
 _bidirectional_.  For a more thorough description and rationale, turn to: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#deterministic-encoding.
 
+This encoding scheme is _backward compatible_ with the "CBOR&nbsp;Playground" (https://cbor.me),
+maintained by the RFC8949 editor, Carsten&nbsp;Bormann.
+
 ### Diagnostic Notation Support
 
 Diagnostic notation permits displaying CBOR data as human-readable text.  This is practical for _logging_,
@@ -59,5 +65,5 @@ the `CBOR.diagnosticNotation(`_string_`)` method.
 
 Note: the intention with diagnostic notation is not using it as a "wire" format.
 
-Updated: 2023-05-25
+Updated: 2023-05-26
 
