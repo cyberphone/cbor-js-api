@@ -4,7 +4,11 @@ This repository holds a JavaScript API _in development_.  The API
 loosely mimics the "JSON" object by _exposing a single global object_,
 unsurprisingly named "CBOR".  The core is based on wrapping CBOR data items
 in type-specific objects.  These objects are used for encoding CBOR data,
-as well being the result of CBOR decoding.
+as well as being the result of CBOR decoding.
+
+To simplify adoption, the API utilizes a CBOR encoding scheme that is _backward compatible_ 
+with the "CBOR&nbsp;Playground" (https://cbor.me), maintained by the
+[RFC8949](https://www.rfc-editor.org/rfc/rfc8949.html) editor, Carsten&nbsp;Bormann.
 
 <table align='center'><tr><td><i>Note that this API is not (at all) ready for external use!</i> 😏</td></tr></table>
 
@@ -26,7 +30,7 @@ console.log(CBOR.toHex(cbor));
 ------------------------------
 a201fb4046d9999999999a0269486920746865726521
 ```
-Note: chaining objects as shown above is just an alternative.
+Note: there are no requirments "chaining" objects as shown above.
 
 ### Decoding Example
 
@@ -49,9 +53,6 @@ Value=45.7
 The JavaScript API implements deterministic encoding based on section 4.2 of [RFC8949](https://www.rfc-editor.org/rfc/rfc8949.html).
 For maximum interoperability, the API also depends on Rule&nbsp;2 of section 4.2.2, as well as interpreting Appendix&nbsp;A as
 _bidirectional_.  For a more thorough description and rationale, turn to: https://cyberphone.github.io/android-cbor/distribution/apidoc/org/webpki/cbor/package-summary.html#deterministic-encoding.
-
-This encoding scheme is _backward compatible_ with the "CBOR&nbsp;Playground" (https://cbor.me),
-maintained by the RFC8949 editor, Carsten&nbsp;Bormann.
 
 ### Diagnostic Notation Support
 
