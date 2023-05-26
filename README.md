@@ -25,12 +25,12 @@ let cbor = CBOR.Map()
                .set(CBOR.Int(1), CBOR.Float(45.7))
                .set(CBOR.Int(2), CBOR.String("Hi there!")).encode();
 
-
 console.log(CBOR.toHex(cbor));
 ------------------------------
 a201fb4046d9999999999a0269486920746865726521
 ```
-Note: there are no requirments "chaining" objects as shown above.
+Note: there are no requirments "chaining" objects as shown above; items
+may be added to `CBOR.Map` and `CBOR.Array` objects in separate steps.
 
 ### Decoding Example
 
