@@ -285,6 +285,8 @@ class CBOR {
 // FOR REMOVAL
               console.log("@@@ succeeded f16 denorm");
             }
+// FOR REMOVAL
+            console.log("f16 exp=" + f16exp);
             // A rarity, 16 bits turned out being sufficient for representing value.
             this.#tag = CBOR.#MT_FLOAT16;
             let f16bin = 
@@ -323,6 +325,11 @@ class CBOR {
 
     toString = function() {
       return this.#value.toString();
+    }
+
+    _compare = function(decoded) {
+    console.log("A=" + CBOR.toHex(this.#encoded) + " B=" + CBOR.toHex(decoded));
+      return CBOR.compareArrays(this.#encoded, decoded);
     }
 
     _get = function() {
@@ -804,17 +811,7 @@ class CBOR {
       }
       return result;
     }
-/*
 
-        private CBORFloat checkDoubleConversion(int tag, long bitFormat, long rawDouble)
-                 {
-            CBORFloat value = new CBORFloat(Double.longBitsToDouble(rawDouble));
-            if ((value.tag != tag || value.bitFormat != bitFormat) && deterministicMode) {
-                reportError(String.format(STDERR_NON_DETERMINISTIC_FLOAT + "%2x", tag));
-            }
-            return value;
-        }
-*/
     unsupportedTag = function(tag) {
       throw Error("Unsupported tag: " + CBOR.#twoHex(tag));
     }
@@ -824,6 +821,80 @@ class CBOR {
         throw Error("Length limited to 0xffffffff");
       }
       return Number(value);
+    }
+
+    compareAndReturn = function(decoded, f64) {
+      let cborFloat = CBOR.Float(f64);
+      if (cborFloat._compare(decoded)) {
+      console.log("FAIL=" + f64);
+        throw Error("Did not work: " + f64);
+      }
+      return cborFloat;
+    }
+ 
+    shiftLeft = function(value) {
+      let v = 1;
+      let factor = 2;
+      if (value < 0) {
+        value = -value;
+        factor = 0.5;
+      }  
+      while (value--) {
+        v *= factor;
+      }
+      console.log("MULT=" + v);
+      return v;
+    }
+
+    recreateF64AndReturn = function(numberOfBytes,
+                                    specialNumbers,
+                                    significandMsbP1,
+                                    offset,
+                                    divisor) {
+      let decoded = this.readBytes(numberOfBytes);
+      let sign = false;
+      if (decoded[0] & 0x80) {
+        decoded[0] &= 0x7f;
+        sign = true;
+      }
+      let float = 0;
+      for (let i = 0; i < decoded.length; i++) {
+        float *= 256;
+        float += decoded[i];
+      }
+      let f64 = 0.0;
+      while (true) {
+        // The two cases of zero.
+        if (!float) break;
+        // The three cases of numbers that have no/little use.
+        if ((float & specialNumbers) == specialNumbers) {
+          f64 = (float == specialNumbers) ? Number.POSITIVE_INFINITY : Number.NaN;
+          break;
+        }
+        // A genuine number
+        let exponent = float & specialNumbers;
+        console.log("exponent-1=" + exponent);
+        f64 = float - exponent;
+        console.log("calculated-1=" + f64);
+        exponent /= significandMsbP1;
+        console.log("exponent-2=" + exponent);
+        if (exponent) {
+          // Normal representation, add implicit "1.".
+          f64 += significandMsbP1;
+          exponent--;
+        console.log("calculated-2=" + f64);
+        }
+        f64 *= this.shiftLeft(exponent - offset);
+        console.log("calculated-3=" + f64);
+        f64 /= divisor;
+        console.log("calculated-4=" + f64);
+        break;
+      }
+      if (sign) {
+        f64 = -f64;
+        decoded[0] |= 0x80;
+      }
+      return this.compareAndReturn(decoded, f64);
     }
 
     getObject = function() {
@@ -847,72 +918,22 @@ class CBOR {
             value = ~value;
           }
           return CBOR.BigInt(value);
-/*
+
         case CBOR.#MT_FLOAT16:
-          this.floatConversion(0);
-            let float16 = readNumber(2);
-            let unsignedf16 = float16 & ~FLOAT16_NEG_ZERO;
-
-            // Begin with the edge cases.
-                    
-            if ((unsignedf16 & FLOAT16_POS_INFINITY) == FLOAT16_POS_INFINITY) {
-                // Special "number"
-                f64Bin = (unsignedf16 == FLOAT16_POS_INFINITY) ?
-                    // Non-deterministic representations of NaN will be flagged later.
-                    // NaN "signaling" is not supported, "quiet" NaN is all there is.
-
-                    FLOAT64_POS_INFINITY : FLOAT64_NOT_A_NUMBER;
-
-            } else if (unsignedf16 == 0) {
-                    f64Bin = FLOAT64_ZERO;
-            } else {
-
-                // It is a "regular" non-zero number.
-                    
-                // Get the bare (but still biased) float16 exponent.
-                let exponent = (unsignedf16 >> FLOAT16_SIGNIFICAND_SIZE);
-                // Get the float16 significand bits.
-                let significand = unsignedf16;
-                if (exponent == 0) {
-                    // Subnormal float16 - In float64 that must translate to normalized.
-                    exponent++;
-                    do {
-                        exponent--;
-                        significand <<= 1;
-                        // Continue until the implicit "1" is in the proper position.
-                    } while ((significand & (1 << FLOAT16_SIGNIFICAND_SIZE)) == 0);
-                }
-//                     significand & ((1 << FLOAT16_SIGNIFICAND_SIZE) - 1);
-                f64Bin = mapValues(exponent + FLOAT64_EXPONENT_BIAS - FLOAT16_EXPONENT_BIAS,
-                                    significand, FLOAT16_SIGNIFICAND_SIZE);
-                mapVau
-                unsignedResult = 
-                // Exponent.  Set the proper bias and put result in front of significand.
-                ((exponent + (FLOAT64_EXPONENT_BIAS - FLOAT16_EXPONENT_BIAS)) 
-                    << FLOAT64_SIGNIFICAND_SIZE) +
-                // Significand.  Remove everything above.
-                (significand & ((1l << FLOAT64_SIGNIFICAND_SIZE) - 1));
-            }
-              return checkDoubleConversion(tag,
-                                            float16, 
-                                            f64Bin,
-                                            // Put sign bit in position.
-                                            ((float16 & FLOAT16_NEG_ZERO) << (64 - 16)));
+          return this.recreateF64AndReturn(2, 0x7c00, 0x400, 15, 0x200);
 
         case CBOR.#MT_FLOAT32:
-              long float32 = getLongFromBytes(4);
-              return checkDoubleConversion(tag, 
-                                              float32,
-                                              Double.doubleToLongBits(
-                                                      Float.intBitsToFloat((int)float32)));
- 
-            case CBOR.#MT_FLOAT64:
-                long float64 = getLongFromBytes(8);
-                return checkDoubleConversion(tag, float64, float64);
-*/
+          return this.recreateF64AndReturn(4, 0x7f800000, 0x800000, 127, 0x400000);
+
+        case CBOR.#MT_FLOAT64:
+           let f64bytes = this.readBytes(8);
+           const f64buffer = new ArrayBuffer(8);
+           new Uint8Array(f64buffer).set(f64bytes);
+           return this.compareAndReturn(f64bytes, new DataView(f64buffer).getFloat64(0, false));
+
         case CBOR.#MT_NULL:
           return CBOR.Null();
-                    
+ 
         case CBOR.#MT_TRUE:
         case CBOR.#MT_FALSE:
           return CBOR.Bool(tag == CBOR.#MT_TRUE);
@@ -1193,6 +1214,8 @@ class CBOR {
     }
     return result;
   }
+
+  static array
 
   static compareArrays = function(a, b) {
     let minIndex = Math.min(a.length, b.length);
