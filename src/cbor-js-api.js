@@ -180,36 +180,7 @@ class CBOR {
       } else {
         tag = CBOR.#MT_UNSIGNED;
       }
-      // Convert BigInt to Uint8Array (but with a twist).
-      let array = [];
-      let temp = BigInt(value);
-      do {
-        array.push(Number(temp & 255n));
-        temp >>= 8n;
-      } while (temp);
-      let length = array.length;
-      // Prepare for "Int" encoding (1, 2, 4, 8).  Only 3, 5, 6, and 7 need an action.
-      while (length < 8 && length > 2 && length != 4) {
-        array.push(0);
-        length++;
-      }
-      let byteArray = new Uint8Array(array.reverse());
-      // Does this number qualify as a "BigInt"?
-      if (length <= 8) {
-        // Apparently not, encode it as "Int".
-        if (length == 1 && byteArray[0] < 24) {
-          return new Uint8Array([tag | byteArray[0]]);
-        }
-        let modifier = 24;
-        while (length >>= 1) {
-           modifier++;
-        }
-        return CBOR.addArrays(new Uint8Array([tag | modifier]), byteArray);
-      }
-      // True "BigInt".
-      return CBOR.addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
-                                               CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
-                                           CBOR.Bytes(byteArray).encode());
+      return CBOR.#finishBigIntAndTag(tag, value);
     }
 
     toString = function() {
@@ -722,25 +693,38 @@ class CBOR {
 
   static Tag = class extends CBOR.#CBORObject {
 
+    static RESERVED_TAG_COTX = 1010n;
+
     #tagNumber;
     #object;
 
     constructor(tagNumber, object) {
       super();
-      this.#tagNumber = CBOR.#intCheck(tagNumber);
-      if (tagNumber < 0) {
-        throw Error("Tag is negative");
+      if (typeof tagNumber != 'bigint') {
+        tagNumber = BigInt(CBOR.#intCheck(tagNumber));
       }
+      if (tagNumber < 0n || tagNumber >= 0x10000000000000000n) {
+        throw Error("Tag value is out of range");
+      }
+      this.#tagNumber = tagNumber;
       this.#object = CBOR.#cborArguentCheck(object);
     }
 
     encode = function() {
-      return CBOR.addArrays(CBOR.#encodeTagAndN(CBOR.#MT_TAG, this.#tagNumber),
+      return CBOR.addArrays(CBOR.#finishBigIntAndTag(CBOR.#MT_TAG, this.#tagNumber),
                             this.#object.encode());
     }
 
     toString = function(cborPrinter) {
       return this.#tagNumber.toString() + '(' + this.#object.toString(cborPrinter) + ')';
+    }
+
+    getTagNumber = function() {
+      return this.#tagNumber;
+    }
+
+    getTagObject = function() {
+      return this.#object;
     }
 
     _get = function() {
@@ -961,17 +945,16 @@ class CBOR {
             console.log(bigN);
       // N successfully decoded, now switch on major type (upper three bits).
       switch (tag & 0xe0) {
+
         case CBOR.#MT_TAG:
-          let tagData = getObject();
-          /*
-          if (bigN == CBORTag.RESERVED_TAG_COTX) {
-            let holder = tagData.getArray(2);
-            if (holder.get(0).getType() != CBORTypes.TEXT_STRING) {
-                reportError("Tag syntax " +  CBORTag.RESERVED_TAG_COTX +
+          let tagData = this.getObject();
+          if (bigN == CBOR.Tag.RESERVED_TAG_COTX) {
+            if (!tagData instanceof CBOR.Array || tagData.size() != 2 ||
+                !tagData.get(0) instanceof CBOR.String) {
+                throw Error("Tag syntax " +  CBOR.Tag.RESERVED_TAG_COTX +
                             "([\"string\", CBOR object]) expected");
             }
           }
-          */
           return CBOR.Tag(bigN, tagData);
 
         case CBOR.#MT_UNSIGNED:
@@ -1107,6 +1090,38 @@ class CBOR {
         "Argument is outside of Number.MAX_SAFE_INTEGER" : "Argument is not an integer");
     }
     return value;
+  }
+
+  static #finishBigIntAndTag = function(tag, value) {
+    // Convert BigInt to Uint8Array (but with a twist).
+    let array = [];
+    do {
+      array.push(Number(value & 255n));
+      value >>= 8n;
+    } while (value);
+    let length = array.length;
+    // Prepare for "Int" encoding (1, 2, 4, 8).  Only 3, 5, 6, and 7 need an action.
+    while (length < 8 && length > 2 && length != 4) {
+      array.push(0);
+      length++;
+    }
+    let byteArray = new Uint8Array(array.reverse());
+    // Does this number qualify as a "BigInt"?
+    if (length <= 8) {
+      // Apparently not, encode it as "Int".
+      if (length == 1 && byteArray[0] < 24) {
+        return new Uint8Array([tag | byteArray[0]]);
+      }
+      let modifier = 24;
+      while (length >>= 1) {
+          modifier++;
+      }
+      return CBOR.addArrays(new Uint8Array([tag | modifier]), byteArray);
+    }
+    // True "BigInt".
+    return CBOR.addArrays(new Uint8Array([tag == CBOR.#MT_NEGATIVE ?
+                                             CBOR.#MT_BIG_NEGATIVE : CBOR.#MT_BIG_UNSIGNED]), 
+                                          CBOR.Bytes(byteArray).encode());
   }
 
   static #Printer = class {
