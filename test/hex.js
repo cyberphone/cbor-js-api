@@ -1,4 +1,4 @@
-// Test program for floating point "edge cases"
+// Test program for the hex converters
 const CBOR = require('../src/cbor-js-api.js');
 const assertTrue = require('./assertions.js').assertTrue;
 const assertFalse = require('./assertions.js').assertFalse;
