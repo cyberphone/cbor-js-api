@@ -1204,16 +1204,16 @@ class CBOR {
 //================================//
 
   static addArrays = function(a, b) {
-  let result = new Uint8Array(a.length + b.length);
-    let q = 0;
-    while (q < a.length) {
-      result[q] = a[q++];
+    let result = new Uint8Array(a.length + b.length);
+      let q = 0;
+      while (q < a.length) {
+        result[q] = a[q++];
+      }
+      for (let i = 0; i < b.length; i++) {
+        result[q + i] = b[i];
+      }
+      return result;
     }
-    for (let i = 0; i < b.length; i++) {
-      result[q + i] = b[i];
-    }
-    return result;
-  }
 
   static array
 
