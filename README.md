@@ -10,7 +10,7 @@ To simplify adoption, the API utilizes a CBOR encoding scheme that is _backward 
 with the "CBOR&nbsp;Playground" (https://cbor.me), maintained by the
 [RFC8949](https://www.rfc-editor.org/rfc/rfc8949.html) editor, Carsten&nbsp;Bormann.
 
-<table align='center'><tr><td><i>Note that this API is not (at all) ready for external use!</i> 😏</td></tr></table>
+<table align='center'><tr><td><i>Note that this API is not ready for external use!</i> 😏</td></tr></table>
 
 ### "CBOR" Components
 - Self-encoding wrapping objects
