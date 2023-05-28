@@ -831,25 +831,10 @@ class CBOR {
       }
       return cborFloat;
     }
- 
-    shiftLeft = function(value) {
-      let v = 1;
-      let factor = 2;
-      if (value < 0) {
-        value = -value;
-        factor = 0.5;
-      }  
-      while (value--) {
-        v *= factor;
-      }
-      //@ console.log("MULT=" + v);
-      return v;
-    }
 
     recreateF64AndReturn = function(numberOfBytes,
                                     specialNumbers,
                                     significandMsbP1,
-                                    offset,
                                     divisor) {
       let decoded = this.readBytes(numberOfBytes);
       let sign = false;
@@ -857,10 +842,10 @@ class CBOR {
         decoded[0] &= 0x7f;
         sign = true;
       }
-      let float = 0;
+      let float = 0n;
       for (let i = 0; i < decoded.length; i++) {
-        float *= 256;
-        float += decoded[i];
+        float *= 256n;
+        float += BigInt(decoded[i]);
       }
       let f64 = 0.0;
       while (true) {
@@ -874,18 +859,28 @@ class CBOR {
         // A genuine number
         let exponent = float & specialNumbers;
         //@ console.log("exponent-1=" + exponent);
-        f64 = float - exponent;
-        //@ console.log("calculated-1=" + f64);
+        let f64bin = float - exponent;
+        //@ console.log("calculated-1=" + f64bin);
         exponent /= significandMsbP1;
         //@ console.log("exponent-2=" + exponent);
         if (exponent) {
           // Normal representation, add implicit "1.".
-          f64 += significandMsbP1;
+          f64bin += significandMsbP1;
           exponent--;
-        //@ console.log("calculated-2=" + f64);
+        //@ console.log("calculated-2=" + f64bin);
         }
-        f64 *= this.shiftLeft(exponent - offset);
-        //@ console.log("calculated-3=" + f64);
+        f64bin <<= exponent;
+        //@ console.log("calculated-3=" + f64bin);
+        let array = [];
+        while (f64bin) {
+          array.push(Number(f64bin & 255n));
+          f64bin >>= 8n;
+        }
+        array = array.reverse();
+        for (let q = 0; q < array.length; q++) {
+          f64 *= 256;
+          f64 += array[q];
+        }
         f64 /= divisor;
         //@ console.log("calculated-4=" + f64);
         break;
@@ -920,10 +915,11 @@ class CBOR {
           return CBOR.BigInt(value);
 
         case CBOR.#MT_FLOAT16:
-          return this.recreateF64AndReturn(2, 0x7c00, 0x400, 15, 0x200);
+          return this.recreateF64AndReturn(2, 0x7c00n, 0x400n, 0x1000000);
 
         case CBOR.#MT_FLOAT32:
-          return this.recreateF64AndReturn(4, 0x7f800000, 0x800000, 127, 0x400000);
+          return this.recreateF64AndReturn(4, 0x7f800000n, 0x800000n, 
+                                           0x20000000000000000000000000000000000000);
 
         case CBOR.#MT_FLOAT64:
            let f64bytes = this.readBytes(8);
