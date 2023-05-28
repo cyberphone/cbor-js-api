@@ -305,7 +305,15 @@ class CBOR {
     }
 
     toString = function() {
-      return this.#value.toString();
+      let floatString = this.#value.toString();
+      // Diagnostic Notation support.
+      if (floatString.indexOf('.') < 0) {
+        let matches = floatString.match(/\-?\d+/g);
+        if (matches) {
+          floatString = matches[0] + '.0' + floatString.substring(matches[0].length);
+        }
+      }
+     return floatString;
     }
 
     _compare = function(decoded) {
