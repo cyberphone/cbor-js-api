@@ -250,7 +250,7 @@ class CBOR {
             // If it is a subnormal F32 or if F16 would lose precision, stick to F32.
             if (f32exp == 0 || f32signif & 0x1fff) {
 // FOR REMOVAL
-              console.log('@@@ skip ' + (f32exp ? "f32prec" : "f32denorm"));
+              //@ console.log('@@@ skip ' + (f32exp ? "f32prec" : "f32denorm"));
               break;
             }
             // Arrange for F16.
@@ -259,7 +259,7 @@ class CBOR {
             // If too large for F16, stick to F32.
             if (f16exp > 30) {
 // FOR REMOVAL
-              console.log("@@@ skip above f16exp=" + f16exp);
+              //@ console.log("@@@ skip above f16exp=" + f16exp);
               break;
             }
             // Finally, is value too small for F16?
@@ -273,7 +273,7 @@ class CBOR {
                 if ((f16signif & 1) != 0) {
                   f16signif = 0;
 // FOR REMOVAL
-                  console.log("@@@ skip under f16");
+                  //@ console.log("@@@ skip under f16");
                   break;
                 }
                 f16signif >>= 1;
@@ -283,10 +283,10 @@ class CBOR {
                 break;
               }
 // FOR REMOVAL
-              console.log("@@@ succeeded f16 denorm");
+              //@ console.log("@@@ succeeded f16 denorm");
             }
 // FOR REMOVAL
-            console.log("f16 exp=" + f16exp);
+            //@ console.log("f16 exp=" + f16exp);
             // A rarity, 16 bits turned out being sufficient for representing value.
             this.#tag = CBOR.#MT_FLOAT16;
             let f16bin = 
@@ -328,7 +328,7 @@ class CBOR {
     }
 
     _compare = function(decoded) {
-    console.log("A=" + CBOR.toHex(this.#encoded) + " B=" + CBOR.toHex(decoded));
+    //@ console.log("A=" + CBOR.toHex(this.#encoded) + " B=" + CBOR.toHex(decoded));
       return CBOR.compareArrays(this.#encoded, decoded);
     }
 
@@ -663,7 +663,7 @@ class CBOR {
     }
 
     encode = function() {
-    console.log("nr=" + this.#numberOfEntries);
+    //@ console.log("nr=" + this.#numberOfEntries);
       let encoded = CBOR.#encodeTagAndN(CBOR.#MT_MAP, this.#numberOfEntries);
       for (let entry = this.#root; entry; entry = entry.next) {
         encoded = CBOR.addArrays(encoded, 
@@ -826,7 +826,7 @@ class CBOR {
     compareAndReturn = function(decoded, f64) {
       let cborFloat = CBOR.Float(f64);
       if (cborFloat._compare(decoded)) {
-      console.log("FAIL=" + f64);
+      //@ console.log("FAIL=" + f64);
         throw Error("Did not work: " + f64);
       }
       return cborFloat;
@@ -842,7 +842,7 @@ class CBOR {
       while (value--) {
         v *= factor;
       }
-      console.log("MULT=" + v);
+      //@ console.log("MULT=" + v);
       return v;
     }
 
@@ -873,21 +873,21 @@ class CBOR {
         }
         // A genuine number
         let exponent = float & specialNumbers;
-        console.log("exponent-1=" + exponent);
+        //@ console.log("exponent-1=" + exponent);
         f64 = float - exponent;
-        console.log("calculated-1=" + f64);
+        //@ console.log("calculated-1=" + f64);
         exponent /= significandMsbP1;
-        console.log("exponent-2=" + exponent);
+        //@ console.log("exponent-2=" + exponent);
         if (exponent) {
           // Normal representation, add implicit "1.".
           f64 += significandMsbP1;
           exponent--;
-        console.log("calculated-2=" + f64);
+        //@ console.log("calculated-2=" + f64);
         }
         f64 *= this.shiftLeft(exponent - offset);
-        console.log("calculated-3=" + f64);
+        //@ console.log("calculated-3=" + f64);
         f64 /= divisor;
-        console.log("calculated-4=" + f64);
+        //@ console.log("calculated-4=" + f64);
         break;
       }
       if (sign) {
@@ -948,13 +948,13 @@ class CBOR {
         // For 1, 2, 4, and 8 byte N.
         let q = 1 << (n - 24);
         let mask = 0xffffffffn << BigInt((q >> 1) * 8);
-        console.log('mask=' + mask.toString(16));
+        //@ console.log('mask=' + mask.toString(16));
         bigN = 0n;
         while (--q >= 0) {
           bigN <<= 8n;
           bigN += BigInt(this.readByte());
         }
-        console.log("bigN=" + bigN);
+        //@ console.log("bigN=" + bigN);
         // If the upper half (for 2, 4, 8 byte N) of N or a single byte
         // N is zero, a shorter variant should have been used.
         // In addition, N must be > 23. 
@@ -962,8 +962,8 @@ class CBOR {
           throw Error("Non-deterministic N encoding for tag: 0x" + CBOR.#twoHex(tag));
         }
       }
-            console.log("N=" + bigN + " " + (typeof BigN == 'bigint'));
-            console.log(bigN);
+            //@ console.log("N=" + bigN + " " + (typeof BigN == 'bigint'));
+            //@ console.log(bigN);
       // N successfully decoded, now switch on major type (upper three bits).
       switch (tag & 0xe0) {
 
