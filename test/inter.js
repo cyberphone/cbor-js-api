@@ -5,13 +5,8 @@ const prompt = require('prompt-sync')({sigint: true});
 
 while (true) {
   let text = prompt('Input BigInt (n or 0xn) : ').replace(/\ /g, '');
-  let radix = 10;
-  if (text.startsWith('0x')) {
-    test = text.substring(2);
-    radix = 16;
-  }
-  let bigInt = BigInt(text, radix);
-  let encodedCbor = CBOR.BigInt(bigInt).encode();
+  let radix = text.startsWith('0x') ? 16 : 10;
+  let encodedCbor = CBOR.BigInt(BigInt(text)).encode();
   console.log("Encoded: " + CBOR.toHex(encodedCbor));
   let decodedCbor =  CBOR.decode(encodedCbor);
   console.log("Decoded: " + 

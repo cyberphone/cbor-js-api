@@ -7,7 +7,7 @@ oneTurn = function(hex, dn) {
     throw Error("Should not fail on: " + dn);
   } catch (error) {
     if (!error.toString().includes("Non-d")) {
-      throw Error("Err=" + error.toString());
+      throw error;
     }
   }
   let decoder = CBOR.initExtended(CBOR.fromHex(hex), false, true, false);
@@ -26,6 +26,6 @@ oneTurn('FB3ff0000000000000', '1.0');
 oneTurn('f97e01', 'NaN');
 oneTurn('c240', '0');
 
-// This one is actually correct...
+// This one is actually deterministic...
 oneTurn('fa7f7fffff', '3.4028234663852886e+38');
 

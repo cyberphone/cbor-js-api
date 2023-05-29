@@ -20,7 +20,7 @@ class CBOR {
       if (this instanceof CBOR.BigInt) {
         // During decoding, integers outside of Number.MAX_SAFE_INTEGER
         // automatically get "BigInt" representation. 
-        throw Error("Integer is outside of Number.MAX_SAFE_INTEGER, use getBigInt()");
+        throw RangeError("Integer is outside of Number.MAX_SAFE_INTEGER, use getBigInt()");
       }
       return this.#checkTypeAndGetValue(CBOR.Int);
     }
@@ -82,7 +82,7 @@ class CBOR {
  
     #checkTypeAndGetValue = function(className) {
       if (!(this instanceof className)) {
-        throw Error("Invalid method call for object: CBOR." + this.constructor.name);
+        throw TypeError("Invalid method call for object: CBOR." + this.constructor.name);
       }
       return this._get();
     }
@@ -456,7 +456,7 @@ class CBOR {
     get = function(index) {
       index = CBOR.#intCheck(index);
       if (index < 0 || index >= this.#elements.length) {
-        throw Error("Array index out of range: " + index);
+        throw RangeError("Array index out of range: " + index);
       }
       return this.#elements[index];
     }
@@ -698,7 +698,7 @@ class CBOR {
         tagNumber = BigInt(CBOR.#intCheck(tagNumber));
       }
       if (tagNumber < 0n || tagNumber >= 0x10000000000000000n) {
-        throw Error("Tag value is out of range");
+        throw RangeError("Tag value is out of range");
       }
       this.#tagNumber = tagNumber;
       this.#object = CBOR.#cborArguentCheck(object);
@@ -739,14 +739,14 @@ class CBOR {
 
     apply(target, thisArg, argumentsList) {
       if (argumentsList.length != this.numberOfArguments) {
-        throw Error("CBOR." + target.name + " expects " + 
-        (this.numberOfArguments ? this.numberOfArguments.toString() : "no") + " arguments");
+        throw SyntaxError("CBOR." + target.name + " expects " +
+                          this.numberOfArguments + " argument(s)");
       }
       return new target(...argumentsList);
     }
 
     construct(target, args) {
-      throw Error("CBOR." + target.name + " does not permit \"new\"");
+      throw SyntaxError("CBOR." + target.name + " does not permit \"new\"");
     }
   }
 
@@ -805,7 +805,7 @@ class CBOR {
 
     rangeLimitedBigInt = function(value) {
       if (value > 0xffffffffn) {
-        throw Error("Length limited to 0xffffffff");
+        throw RangeError("Length limited to 0xffffffff");
       }
       return Number(value);
     }
@@ -944,8 +944,8 @@ class CBOR {
           if (bigN == CBOR.Tag.RESERVED_TAG_COTX) {
             if (!tagData instanceof CBOR.Array || tagData.size() != 2 ||
                 !tagData.get(0) instanceof CBOR.String) {
-                throw Error("Tag syntax " +  CBOR.Tag.RESERVED_TAG_COTX +
-                            "([\"string\", CBOR object]) expected");
+                throw SyntaxError("Tag syntax " +  CBOR.Tag.RESERVED_TAG_COTX +
+                                  "([\"string\", CBOR object]) expected");
             }
           }
           return CBOR.Tag(bigN, tagData);
@@ -1066,12 +1066,12 @@ class CBOR {
     if (byteArray instanceof Uint8Array) {
       return byteArray;
     }
-    throw Error("Argument is not an 'Uint8Array'");
+    throw TypeError("Argument is not an 'Uint8Array'");
   }
 
   static #typeCheck = function(object, type) {
     if (typeof object != type) {
-      throw Error("Argument is not a '" + type + "'");
+      throw TypeError("Argument is not a '" + type + "'");
     }
     return object;
   }
@@ -1079,8 +1079,11 @@ class CBOR {
   static #intCheck = function(value) {
     CBOR.#typeCheck(value, 'number');
     if (!Number.isSafeInteger(value)) {
-      throw Error(Number.isInteger(value) ?
-        "Argument is outside of Number.MAX_SAFE_INTEGER" : "Argument is not an integer");
+      if (Number.isInteger(value)) {
+        throw RangeError("Argument is outside of Number.MAX_SAFE_INTEGER");
+      } else {
+        throw TypeError("Argument is not an integer");
+      }
     }
     return value;
   }
@@ -1093,16 +1096,16 @@ class CBOR {
       value >>= 8n;
     } while (value);
     let length = array.length;
-    // Prepare for "Int" encoding (1, 2, 4, 8).  Only 3, 5, 6, and 7 need an action.
+    // Prepare for "integer" encoding (1, 2, 4, 8).  Only 3, 5, 6, and 7 need an action.
     while (length < 8 && length > 2 && length != 4) {
       array.push(0);
       length++;
     }
     let byteArray = new Uint8Array(array.reverse());
-    // Does this number qualify as a "BigInt"?
+    // Does this number qualify as a "big integer"?
     if (length <= 8) {
-      // Apparently not, encode it as "Int".
-      if (length == 1 && byteArray[0] < 24) {
+      // Apparently not, encode it as "integer".
+      if (length == 1 && byteArray[0] <= 23) {
         return new Uint8Array([tag | byteArray[0]]);
       }
       let modifier = 24;
@@ -1161,14 +1164,15 @@ class CBOR {
     if (object instanceof CBOR.#CBORObject) {
       return object;
     }
-    throw Error(object ? "Argument is not a CBOR object: " + object.constructor.name : "'null'");
+    throw TypeError(object ? 
+                    "Argument is not a CBOR object: " + object.constructor.name : "'null'");
   }
 
   static #decodeOneHex(charCode) {
     if (charCode >= 0x30 && charCode <= 0x39) return charCode - 0x30;
     if (charCode >= 0x61 && charCode <= 0x66) return charCode - 0x57;
     if (charCode >= 0x41 && charCode <= 0x46) return charCode - 0x37;
-    throw Error("Bad hex character: " + String.fromCharCode(charCode));
+    throw SyntaxError("Bad hex character: " + String.fromCharCode(charCode));
   }
 
 //================================//
@@ -1211,7 +1215,7 @@ class CBOR {
   static fromHex = function (hexString) {
     let length = hexString.length;
     if (length & 1) {
-      throw Error("Uneven number of characters in hex string");
+      throw SyntaxError("Uneven number of characters in hex string");
     }
     let result = new Uint8Array(length >> 1);
     for (let q = 0; q < length; q += 2) {
