@@ -1,1 +1,1 @@
-This repo has been replaced by https://github.com/cyberphone/cbor.js
+This repo has been replaced by https://github.com/cyberphone/CBOR.js
